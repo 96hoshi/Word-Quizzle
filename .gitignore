@@ -23,6 +23,9 @@
 hs_err_pid*
 /bin/
 
+### Eclipse ###
+bin/
+
 # Eclipse Core
 .project
 

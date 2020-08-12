@@ -7,27 +7,27 @@ class RegistrationTask extends RemoteObject implements RegistrationRemote {
 
 	private final int MAX_NICK = 32;
 	private final int MAX_PSW = 256;
+	
+	private WQDatabase database;
 
-	public RegistrationTask(/*db*/) throws RemoteException {
+	public RegistrationTask(WQDatabase database) throws RemoteException {
 		super();
-		//this.db = db;
+		this.database = database;
 	}
 
 	@Override
 	public String registerUser(String nickUser, String password) throws RemoteException {
-		// controllo che nickUser e password non siano nulli
-		if (nickUser == null || nickUser.isEmpty() || nickUser.length() > MAX_NICK) {
-			return "Invalid Username";
+		// check if username is not null, not empty and of limited length
+		if (nickUser == null || nickUser.trim().isEmpty() || nickUser.length() > MAX_NICK) {
+			return "Error: Invalid Username";
 		}
-		if (password == null || password.isEmpty() || password.length() > MAX_PSW) {
-			return "Invalid password";
-		} else {
-			return "Registration completed!";
+		if (password == null || password.trim().isEmpty() || password.length() > MAX_PSW) {
+			return "Error: Invalid Password";
 		}
-		// controllo che nel db nuckUser non sia già presente o provo a inserire nel db
-		// se è presente ritorno errore
-		// altrimenti viene aggiunta al db [nick, Utente (struttura dati)]
+		if (!database.addUser(nickUser, password)) {
+			return "Error: Username already taken";
+		}
+		return "Registration completed!";
 	}
 
 }
-

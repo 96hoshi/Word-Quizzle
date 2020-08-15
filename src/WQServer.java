@@ -20,10 +20,11 @@ public class WQServer {
 		int nThreads = 4;
 		long keepAliveTime = 1;
 		LinkedBlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<Runnable>();
-		ThreadPoolExecutor tPool = new ThreadPoolExecutor(nThreads, nThreads + 2, keepAliveTime, TimeUnit.SECONDS,
+		ThreadPoolExecutor tPool = new ThreadPoolExecutor(nThreads, 2*nThreads, keepAliveTime, TimeUnit.SECONDS,
 				workQueue);
 		
 		WQDatabase db = new WQDatabase();
+		
 
 		// Setting RMI method for registration
 		try {
@@ -38,6 +39,7 @@ public class WQServer {
 		}
 
 		System.out.println("Listening for connections on port " + PORT);
+		ByteBuffer buffer = ByteBuffer.allocate(516);
 		ServerSocketChannel serverChannel;
 		Selector selector;
 		try {
@@ -79,7 +81,6 @@ public class WQServer {
 					} else if (key.isReadable()) {
 						// Read the data from client
 						System.out.println("Channel is Readable");
-						ByteBuffer buffer = ByteBuffer.allocate(1024);
 						SocketChannel client = (SocketChannel) key.channel();
 
 						if (client.read(buffer) == -1) {
@@ -90,16 +91,16 @@ public class WQServer {
 							buffer.flip();
 							MessageWorker m = new MessageWorker();
 							Message input = m.readMessage(buffer);
-							handleClient(input, client, selector, tPool);
+							handleClient(input, client, selector, tPool, db);
 							buffer.clear();
 						}
 
 						// Allow write operation on channel
-						client.register(selector, SelectionKey.OP_WRITE);
+//						client.register(selector, SelectionKey.OP_WRITE);
 
 					} else if (key.isWritable()) {
 						// Write the echo to the client
-						System.out.println("Channel is Writeable");
+						System.out.println("Channel is Writable");
 						SocketChannel client = (SocketChannel) key.channel();
 
 						String output = "oook!";
@@ -125,10 +126,12 @@ public class WQServer {
 	}
 
 	private static void handleClient(Message message, SocketChannel client, Selector selector,
-			ThreadPoolExecutor tPool) {
+			ThreadPoolExecutor tPool, WQDatabase db) {
 
 		switch (message.operation) {
 			case "login":
+				tPool.execute(new LoginTask(message, client, selector, db));
+				break;
 			case "add_friend":
 			case "logout":
 			case "friend_list":

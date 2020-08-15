@@ -2,7 +2,7 @@
 import java.util.LinkedHashSet;
 
 public class User {
-	
+
 	private final String username;
 	private final String password;
 	private LinkedHashSet<String> friendList;
@@ -18,11 +18,11 @@ public class User {
 	public String getUsername() {
 		return username;
 	}
-	
+
 	public String getPassword() {
 		return password;
 	}
-	
+
 	public int getScore() {
 		return score;
 	}
@@ -30,13 +30,13 @@ public class User {
 	public void addScore(int score) {
 		this.score += score;
 	}
-	
+
 	public LinkedHashSet<String> getFriendlist() {
 		return friendList;
 	}
 
 	public boolean addFriend(String friendname) {
-		return(friendList.add(friendname));
+		return (friendList.add(friendname));
 	}
 
 }

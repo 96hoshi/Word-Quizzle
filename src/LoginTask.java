@@ -1,6 +1,6 @@
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-
+//deprecated
 public class LoginTask implements Runnable {
 
 	private Message msg;
@@ -17,7 +17,7 @@ public class LoginTask implements Runnable {
 
 	@Override
 	public void run() {
-		String username = msg.nickUser;
+		String username = msg.nick;
 		String password = msg.opt;
 		String response = null;
 		MessageWorker msgWorker = new MessageWorker();
@@ -31,7 +31,7 @@ public class LoginTask implements Runnable {
 		} else {
 			response = "Wrong username";
 		}
-		msgWorker.sendResponse(response, client, selector);
+		msgWorker.sendResponse(response, client, selector, false);
 	}
 
 }

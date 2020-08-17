@@ -6,25 +6,18 @@ import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import java.io.IOException;
 
 public class WQServer {
 
-	public static int PORT = 9999;
+	public final static int PORT = 9999;
 
 	public static void main(String[] args) {
 
-		int nThreads = 4;
-		long keepAliveTime = 1;
-		LinkedBlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<Runnable>();
-		ThreadPoolExecutor tPool = new ThreadPoolExecutor(nThreads, 2*nThreads, keepAliveTime, TimeUnit.SECONDS,
-				workQueue);
-		
 		WQDatabase db = new WQDatabase();
-		
+		MessageWorker msgWorker = new MessageWorker();
+		ConcurrentHashMap<SocketChannel, String> onlineUsr = new ConcurrentHashMap<>();
 
 		// Setting RMI method for registration
 		try {
@@ -57,6 +50,8 @@ public class WQServer {
 			return;
 		}
 
+		TaskHandler handler = new TaskHandler(selector, db, onlineUsr);
+
 		while (true) {
 			try {
 				selector.select();
@@ -85,34 +80,25 @@ public class WQServer {
 
 						if (client.read(buffer) == -1) {
 							System.out.println("Channel is closed by the client " + client);
+							handler.forcedLogout(client);
 							key.cancel();
 							client.close();
 						} else {
 							buffer.flip();
-							MessageWorker m = new MessageWorker();
-							Message input = m.readMessage(buffer);
-							handleClient(input, client, selector, tPool, db);
+							Message input = msgWorker.readMessage(buffer);
+
+							// Allow write operation on channel
+							SelectionKey writeKey = client.register(selector, SelectionKey.OP_WRITE);
+							writeKey.attach(input);
 							buffer.clear();
 						}
-
-						// Allow write operation on channel
-//						client.register(selector, SelectionKey.OP_WRITE);
-
 					} else if (key.isWritable()) {
 						// Write the echo to the client
 						System.out.println("Channel is Writable");
 						SocketChannel client = (SocketChannel) key.channel();
+						Message messageInput = (Message) key.attachment();
 
-						String output = "oook!";
-						byte[] message = new String(output).getBytes();
-						ByteBuffer outBuffer = ByteBuffer.wrap(message);
-
-						while (outBuffer.hasRemaining()) {
-							client.write(outBuffer);
-						}
-						outBuffer.clear();
-
-						client.register(selector, SelectionKey.OP_READ);
+						handler.parseClient(messageInput, client);
 					}
 				} catch (IOException ex) {
 					key.cancel();
@@ -122,25 +108,6 @@ public class WQServer {
 					}
 				}
 			}
-		}
-	}
-
-	private static void handleClient(Message message, SocketChannel client, Selector selector,
-			ThreadPoolExecutor tPool, WQDatabase db) {
-
-		switch (message.operation) {
-			case "login":
-				tPool.execute(new LoginTask(message, client, selector, db));
-				break;
-			case "add_friend":
-			case "logout":
-			case "friend_list":
-			case "score":
-			case "ranking":
-			case "challenge":
-			case "ans_challenge":
-			default:
-				break;
 		}
 	}
 }

@@ -8,17 +8,19 @@ import java.io.IOException;
 
 public class WQClient {
 
-	public static int PORT = 9999;
+	public final static int PORT = 9999;
 	public final static String serverHost = "localhost";
 	
 	private MessageWorker msgWorker;
 	private Scanner scan;
 	private SocketChannel socket;
+	private String nick;
 
 	public WQClient() {
 		msgWorker = new MessageWorker();
 		scan = new Scanner(System.in);
 		socket = null;
+		nick = null;
 	}
 	
 	public static void main(String[] args) throws InterruptedException {
@@ -29,72 +31,90 @@ public class WQClient {
 			
 //			Analyze and send the message to the server
 			client.parseInput(input);
-
 		}
 	}
 
 	private void parseInput(String input) throws NullPointerException {
 		if (input == null)
 			throw new NullPointerException();
+		
+		int args = input.split(" ").length;
+		
+		if (args > 3) {
+			System.out.println("Wrong usage");
+			return;
+		}
 
 		Message message = msgWorker.writeMessage(input);
 
 //		Checks syntax and call the correct handler
 		switch (message.operation) {
 			case "register":
-				if (message.nickUser == null || message.opt == null) {
+				if (message.nick == null || message.opt == null) {
 					System.out.println("Select a valid username and password");
 					break;
 				}
-				handleRegister(message.nickUser, message.opt);
+				register(message.nick, message.opt);
 				break;
 			case "login":
-				if (message.nickUser == null || message.opt == null) {
+				if (message.nick == null || message.opt == null) {
 					System.out.println("Select a valid username and password");
 					break;
 				}
-				handleLogin(message);
-				break;
-			case "add_friend":
-				if (message.nickUser == null || message.opt == null) {
-					System.out.println("Select a valid username and friendname");
-					break;
-				}
-				handleRequest(message);
+				login(message);
 				break;
 			case "logout":
 			case "friend_list":
 			case "score":
 			case "ranking":
-				if (input.length() > 1) {
+				if (args > 1) {
 					System.out.println("Wrong usage");
 					break;
 				}
-				if (message.nickUser == null) {
-					System.out.println("Select a valid username");
+				request(message);
+				break;
+			case "add_friend":
+				if (args > 2) {
+					System.out.println("Wrong usage");
 					break;
 				}
-				handleRequest(message);
+				if (message.nick == null) {
+					System.out.println("Select a valid friendname");
+					break;
+				}
+				request(message);
 				break;
 			case "challenge":
-				if (message.nickUser == null || message.opt == null) {
-					System.out.println("Select a valid username and friendname");
+				if (args > 2) {
+					System.out.println("Wrong usage");
 					break;
 				}
-				handleChallenge(message);
+				if (message.nick == null) {
+					System.out.println("Select a valid friendname");
+					break;
+				}
+				challenge(message);
 				break;
+//			ans_challenge y/n
 			case "ans_challenge":
-				if (message.nickUser == null) {
+				if (args > 2) {
+					System.out.println("Wrong usage");
+					break;
+				}
+				if (message.nick == null) {
 					System.out.println("Not a valid answer");
 					break;
 				}
+			case "--help":
+				printHelp();
+				break;
 			default:
 				System.out.println("Wrong usage");
 				break;
 			}
 		}
 
-		private void handleRegister(String nickUser, String password) {
+		private void register(String nickUser, String password) {
 			Registry registry;
 			RegistrationRemote remote;
 			try {
@@ -107,7 +127,7 @@ public class WQClient {
 			}
 		}
 
-		private void handleLogin(Message message) {
+		private void login(Message message) {
 
 			if (socket == null || !socket.isConnected()) {
 				SocketAddress address = new InetSocketAddress(serverHost, PORT);
@@ -116,11 +136,11 @@ public class WQClient {
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
-
+				
 				String response = msgWorker.sendAndReceive(message, socket);
 				System.out.println(response);
 
-//				rimediare in lettura, usando magari uno stream o un buffer della dimensione corretta
+//				TODO: rimediare in lettura, usando magari uno stream o un buffer della dimensione corretta
 //				per evitare l'uso di trim()
 				if (!response.trim().equals("Login succeeded!")) {
 					try {
@@ -128,25 +148,48 @@ public class WQClient {
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
+				} else {
+					nick = message.nick;
 				}
 
 			} else if (socket.isConnected()) {
-				System.out.println("You are already logged in");
+				System.out.println(nick + " is already logged in");
 				return;
 			}
 		}
 
-		private void handleRequest(Message message) {
+		private void request(Message message) {
 			if (!socket.isConnected()) {
 				System.out.println("You are not logged in");
 				return;
 			}
+
+			message.opt = nick;
 			String response = msgWorker.sendAndReceive(message, socket);
+			if (response.trim().equals("Error: Connection ended")) {
+				try {
+					socket.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
 			System.out.println(response);
 
 		}
 
-		private void handleChallenge(Message message) {
+		private void challenge(Message message) {
 //		aspetta per la risposta del server per dirti che l'amico ha accettato la sfida
+		}
+
+		private void printHelp() {
+			System.out.println("usage: COMMAND [ARGS ...]\n"
+					+ "Commands:" + "\n" + "\tregister <nickUser> <password>  registers a user" + "\n"
+					+ "\tlogin <nickUser> <password> \tlogs in a user" + "\n"
+					+ "\tlogout \t\t\t\tlogs out a user" + "\n"
+					+ "\tadd_friend <nickFriend> \tadds nickFriend as a friend" + "\n"
+					+ "\tfriend_list \t\t\tshows user's friends list" + "\n"
+					+ "\tchallenge <nickFriend> \t\tsends a challenge request to a friend" + "\n"
+					+ "\tscore  \t\t\t\tshows the user's score" + "\n"
+					+ "\tranking  \t\t\tshows the user's ranking");
 		}
 	}

@@ -6,6 +6,13 @@ import java.io.Writer;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.SortedSet;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.gson.Gson;
@@ -40,10 +47,30 @@ public class WQDatabase {
 		updateDB();
 	}
 
-	public void updateFriendList(String username, String friendname) {
+	public int getScore(String username) {
 		User usr = database.get(username);
-		usr.addFriend(friendname);
-		updateDB();
+		return usr.getScore();
+
+	}
+
+	public boolean updateFriendList(String username, String friendname) {
+		User usr = database.get(username);
+		User friend = database.get(friendname);
+
+		if (usr != null && friend != null) {
+			if (usr.addFriend(friendname)) {
+				friend.addFriend(username);
+				updateDB();
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public LinkedHashSet<String> getFriendList(String username) {
+		User usr = (User) database.get(username);
+		return usr.getFriendlist();
+
 	}
 
 	public boolean findUser(String username) {
@@ -51,11 +78,39 @@ public class WQDatabase {
 	}
 
 	public boolean matchPassword(String username, String password) {
-		User usr = database.get(username);
+		User usr = (User) database.get(username);
 		if (usr != null) {
 			return usr.getPassword().equals(password);
 		}
 		return false;
+	}
+
+	public SortedSet<Entry<String, Integer>> getRanking(String username) {
+		Map<String, Integer> usrRanking = new TreeMap<>();
+		LinkedHashSet<String> friends = getFriendList(username);
+
+		User mainUsr = (User) database.get(username);
+		usrRanking.put(username, mainUsr.getScore());
+
+		for (String name : friends) {
+			User usr = (User) database.get(name);
+			usrRanking.put(name, usr.getScore());
+		}
+		return entriesSortedByValues(usrRanking);
+	}
+
+//	ordine decrescente
+	private static <K, V extends Comparable<? super V>> SortedSet<Map.Entry<K, V>> entriesSortedByValues(
+			Map<K, V> map) {
+		SortedSet<Map.Entry<K, V>> sortedEntries = new TreeSet<Map.Entry<K, V>>(new Comparator<Map.Entry<K, V>>() {
+			@Override
+			public int compare(Map.Entry<K, V> e1, Map.Entry<K, V> e2) {
+				int res = -e1.getValue().compareTo(e2.getValue());
+				return res != 0 ? res : 1;
+			}
+		});
+		sortedEntries.addAll(map.entrySet());
+		return sortedEntries;
 	}
 
 	private void restoreDB() {
@@ -65,7 +120,8 @@ public class WQDatabase {
 			// create a reader
 			Reader reader = Files.newBufferedReader(Paths.get(pathDB));
 			// specify the correct parameterized type for database
-			Type mapType = new TypeToken<ConcurrentHashMap<String, User>>(){}.getType();
+			Type mapType = new TypeToken<ConcurrentHashMap<String, User>>() {
+			}.getType();
 			// convert JSON file to map
 			ConcurrentHashMap<String, User> map = gson.fromJson(reader, mapType);
 			this.database = map;
@@ -89,6 +145,5 @@ public class WQDatabase {
 		}
 
 	}
-
 
 }

@@ -1,4 +1,3 @@
-
 import java.util.LinkedHashSet;
 
 public class User {
@@ -36,7 +35,6 @@ public class User {
 	}
 
 	public boolean addFriend(String friendname) {
-		return (friendList.add(friendname));
+		return friendList.add(friendname);
 	}
-
 }

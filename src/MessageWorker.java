@@ -11,21 +11,19 @@ import com.google.gson.Gson;
 public class MessageWorker {
 
 	private Gson gson;
-	private ByteBuffer buffer;
 
 	public MessageWorker() {
 		gson = new Gson();
-		buffer = ByteBuffer.allocate(516);
 	}
 
 	public Message writeMessage(String input) {
 		String s[] = input.split(" ");
 		Message msg = new Message();
-
+		
 		if (s.length > 0)
 			msg.operation = s[0];
 		if (s.length > 1)
-			msg.nickUser = s[1];
+			msg.nick = s[1];
 		if (s.length == 3)
 			msg.opt = s[2];
 
@@ -49,11 +47,16 @@ public class MessageWorker {
 	
 	public String sendAndReceive(Message message, SocketChannel socket) {
 		sendMessage(message, socket);
+		ByteBuffer buffer = ByteBuffer.allocate(516);
 
+		int nread = 0;
 		try {
-			socket.read(buffer);
+			nread = socket.read(buffer);
 		} catch (IOException e) {
 			e.printStackTrace();
+		}
+		if (nread == -1) {
+			return "Error: Connection ended";
 		}
 		String response = new String(buffer.array(), StandardCharsets.US_ASCII);
 		buffer.clear();
@@ -68,7 +71,7 @@ public class MessageWorker {
 		return msg;
 	}
 	
-	public void sendResponse(String response, SocketChannel client, Selector selector) {
+	public void sendResponse(String response, SocketChannel client, Selector selector, boolean isLogout) {
 		byte[] message = new String(response).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
 
@@ -81,16 +84,26 @@ public class MessageWorker {
 		}
 		outBuffer.clear();
 
-		try {
-			client.register(selector, SelectionKey.OP_READ);
-		} catch (ClosedChannelException e) {
-			e.printStackTrace();
+		if (isLogout) {
+			try {
+				System.out.println("Client disconnected " + client);
+				client.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		} else {
+//			set the channel ready for reading 
+			try {
+				client.register(selector, SelectionKey.OP_READ);
+			} catch (ClosedChannelException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 }
 
 class Message {
 	public String operation;
-	public String nickUser;
+	public String nick;
 	public String opt;
 }

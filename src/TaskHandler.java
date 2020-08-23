@@ -1,3 +1,9 @@
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
@@ -12,11 +18,14 @@ public class TaskHandler {
 	private WQDatabase database;
 	private MessageWorker msgWorker;
 	private ConcurrentHashMap<SocketChannel, String> onlineUsr;
+	private ConcurrentHashMap<String, InetSocketAddress> usrAddress;
 
-	public TaskHandler(Selector selector, WQDatabase db, ConcurrentHashMap<SocketChannel, String> ou) {
+	public TaskHandler(Selector selector, WQDatabase db, ConcurrentHashMap<SocketChannel, String> ou,
+			ConcurrentHashMap<String, InetSocketAddress> ua) {
 		this.selector = selector;
 		this.database = db;
 		this.onlineUsr = ou;
+		this.usrAddress = ua;
 		msgWorker = new MessageWorker();
 	}
 
@@ -42,8 +51,10 @@ public class TaskHandler {
 				rankingTask(message, client);
 				break;
 			case "challenge":
-			case "ans_challenge":
+				challengeTask(message, client);
+				break;
 			default:
+				msgWorker.sendResponse("Invalid operation", client, selector, false);
 				break;
 			}
 	}
@@ -51,6 +62,7 @@ public class TaskHandler {
 	private void loginTask(Message message, SocketChannel client) {
 		String username = message.nick;
 		String password = message.opt;
+		int udpPort = message.udpPort;
 		String response = null;
 
 //		TODO: valutare se mandare direttamente login failed, invece di specificare
@@ -63,11 +75,13 @@ public class TaskHandler {
 					response = "Login succeeded!";
 				}
 			} else {
-				response = "Wrong password";
+				response = "Error: Wrong password";
 			}
 		} else {
-			response = "Wrong username";
+			response = "Error: Wrong username";
 		}
+		InetSocketAddress addr = new InetSocketAddress(client.socket().getInetAddress(), udpPort);
+		usrAddress.put(username, addr);
 		msgWorker.sendResponse(response, client, selector, false);
 	}
 
@@ -78,12 +92,12 @@ public class TaskHandler {
 
 		if (database.findUser(friendname)) {
 			if (database.updateFriendList(username, friendname)) {
-				response = "Firendship " + username + " - " + friendname + " created!";
+				response = "Friendship " + username + " - " + friendname + " created!";
 			} else {
-				response = "You are already friend with " + friendname;
+				response = "Error: You are already friend with " + friendname;
 			}
 		} else {
-			response = friendname + " is not a valid user";
+			response = "Error: " + friendname + " is not a valid user";
 		}
 
 		msgWorker.sendResponse(response, client, selector, false);
@@ -94,9 +108,10 @@ public class TaskHandler {
 		String response = null;
 
 		if (!onlineUsr.remove(username, client)) {
-			response = "Invalid operation";
+			response = "Error: Invalid operation";
 		}
 		response = "Logout succeeded!";
+		onlineUsr.remove(client);
 
 		msgWorker.sendResponse(response, client, selector, true);
 	}
@@ -125,7 +140,84 @@ public class TaskHandler {
 		SortedSet<Entry<String, Integer>> map = database.getRanking(username);
 		String response = "Ranking:" + Arrays.toString(map.toArray()).replaceAll("[\\[\\]\\s]", " ");
 		msgWorker.sendResponse(response, client, selector, false);
+	}
+	
+	private void challengeTask(Message message, SocketChannel client) {
+		String friendname = message.nick;
+		String username = message.opt;
+		String response = null;
+		final int challengeRequestTime = 8000;
+		
+		if (friendname.equals(username)) {
+			response = "Error: You cannot challenge yourself!";
+			msgWorker.sendResponse(response, client, selector, false);
+			return;
+		}
+		if (!database.findUser(friendname)) {
+			response = "Error: Not a valid friendname";
+			msgWorker.sendResponse(response, client, selector, false);
+			return;
+		}
+		if (!database.getFriendList(username).contains(friendname)) {
+			response = "Error: You are not friend with " + friendname;
+			msgWorker.sendResponse(response, client, selector, false);
+			return;
+		}
+		if (!onlineUsr.containsValue(friendname)) {
+			response = "Error: Your friend is not online";
+			msgWorker.sendResponse(response, client, selector, false);
+			return;
+		}
 
+//		sending udp request to friend
+		DatagramSocket socket = null;
+		DatagramPacket sendPacket = null;
+		DatagramPacket receivePacket = null;
+		try {
+			socket = new DatagramSocket();
+			InetSocketAddress address = usrAddress.get(friendname);
+			byte[] sendData = new byte[64];
+			byte[] receiveData = new byte[64];
+			String sentence = username + " has challenged you!\nWhat is your answer? Y/N";
+			sendData = sentence.getBytes();
+			sendPacket = new DatagramPacket(sendData, sendData.length, address);
+			try {
+				socket.send(sendPacket);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+			socket.setSoTimeout(challengeRequestTime);
+			receivePacket = new DatagramPacket(receiveData, receiveData.length);
+			try {
+				socket.receive(receivePacket);
+			} catch (SocketTimeoutException e) {
+				// timeout exception.
+				response = friendname + " does not answer. Try later.";
+				msgWorker.sendResponse(response, client, selector, false);
+				socket.close();
+				return;
+			} catch (IOException e) {
+				e.printStackTrace();
+				socket.close();
+			}
+		} catch (SocketException e) {
+			e.printStackTrace();
+			socket.close();
+		}
+
+		String answer = new String(receivePacket.getData()).trim();
+		switch (answer) {
+			case "Y":
+				response = friendname + " has accepted your request!";
+				msgWorker.sendResponse(response, client, selector, false);
+				break;
+			case "N":
+			default:
+				response = friendname + " has rejected your request!";
+				msgWorker.sendResponse(response, client, selector, false);
+			break;
+		}
 	}
 
 	public void forcedLogout(SocketChannel client) {

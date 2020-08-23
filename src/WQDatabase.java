@@ -42,20 +42,19 @@ public class WQDatabase {
 	}
 
 	public void updateScore(String username, int score) {
-		User usr = database.get(username);
+		User usr = (User) database.get(username);
 		usr.addScore(score);
 		updateDB();
 	}
 
 	public int getScore(String username) {
-		User usr = database.get(username);
+		User usr = (User) database.get(username);
 		return usr.getScore();
-
 	}
 
 	public boolean updateFriendList(String username, String friendname) {
-		User usr = database.get(username);
-		User friend = database.get(friendname);
+		User usr = (User) database.get(username);
+		User friend = (User) database.get(friendname);
 
 		if (usr != null && friend != null) {
 			if (usr.addFriend(friendname)) {

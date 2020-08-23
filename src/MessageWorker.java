@@ -19,7 +19,7 @@ public class MessageWorker {
 	public Message writeMessage(String input) {
 		String s[] = input.split(" ");
 		Message msg = new Message();
-		
+
 		if (s.length > 0)
 			msg.operation = s[0];
 		if (s.length > 1)
@@ -44,7 +44,7 @@ public class MessageWorker {
 		}
 		outBuffer.clear();
 	}
-	
+
 	public String sendAndReceive(Message message, SocketChannel socket) {
 		sendMessage(message, socket);
 		ByteBuffer buffer = ByteBuffer.allocate(516);
@@ -63,14 +63,14 @@ public class MessageWorker {
 
 		return response;
 	}
-	
+
 	public Message readMessage(ByteBuffer buffer) {
 		String string = StandardCharsets.UTF_8.decode(buffer).toString();
 		Message msg = gson.fromJson(string, Message.class);
 
 		return msg;
 	}
-	
+
 	public void sendResponse(String response, SocketChannel client, Selector selector, boolean isLogout) {
 		byte[] message = new String(response).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
@@ -106,4 +106,5 @@ class Message {
 	public String operation;
 	public String nick;
 	public String opt;
+	public int udpPort;
 }

@@ -18,14 +18,15 @@ public class WQServer {
 		WQDatabase db = new WQDatabase();
 		MessageWorker msgWorker = new MessageWorker();
 		ConcurrentHashMap<SocketChannel, String> onlineUsr = new ConcurrentHashMap<>();
+		ConcurrentHashMap<String, InetSocketAddress> usrAddress = new ConcurrentHashMap<>();
 
 		// Setting RMI method for registration
 		try {
 			RegistrationTask regService = new RegistrationTask(db);
 			// Export the object
-			RegistrationRemote stub = (RegistrationRemote) UnicastRemoteObject.exportObject(regService, PORT + 1);
+			RegistrationRemote stub = (RegistrationRemote) UnicastRemoteObject.exportObject(regService, 6789);
 			// creation of a registry
-			Registry registry = LocateRegistry.createRegistry(PORT + 1);
+			Registry registry = LocateRegistry.createRegistry(6789);
 			registry.rebind("WQ-Registration", stub);
 		} catch (RemoteException e) {
 			e.printStackTrace();
@@ -50,7 +51,7 @@ public class WQServer {
 			return;
 		}
 
-		TaskHandler handler = new TaskHandler(selector, db, onlineUsr);
+		TaskHandler handler = new TaskHandler(selector, db, onlineUsr, usrAddress);
 
 		while (true) {
 			try {
@@ -93,7 +94,6 @@ public class WQServer {
 							buffer.clear();
 						}
 					} else if (key.isWritable()) {
-						// Write the echo to the client
 						System.out.println("Channel is Writable");
 						SocketChannel client = (SocketChannel) key.channel();
 						Message messageInput = (Message) key.attachment();

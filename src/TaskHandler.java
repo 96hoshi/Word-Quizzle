@@ -181,13 +181,9 @@ public class TaskHandler {
 			String sentence = username + " has challenged you!\nWhat is your answer? Y/N";
 			sendData = sentence.getBytes();
 			sendPacket = new DatagramPacket(sendData, sendData.length, address);
-			try {
-				socket.send(sendPacket);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-
+			socket.send(sendPacket);
 			socket.setSoTimeout(challengeRequestTime);
+//			waiting for client answer
 			receivePacket = new DatagramPacket(receiveData, receiveData.length);
 			try {
 				socket.receive(receivePacket);
@@ -204,6 +200,8 @@ public class TaskHandler {
 		} catch (SocketException e) {
 			e.printStackTrace();
 			socket.close();
+		} catch (IOException e1) {
+			e1.printStackTrace();
 		}
 
 		String answer = new String(receivePacket.getData()).trim();

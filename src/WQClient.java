@@ -2,6 +2,8 @@ import java.nio.channels.*;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.Scanner;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.net.*;
 import java.io.IOException;
@@ -16,9 +18,6 @@ public class WQClient {
 	private SocketChannel socket;
 	private String nick;
 	private DatagramSocket udpSocket; 
-	public ConcurrentHashMap<String , DatagramPacket> invitations;
-	public boolean notify;
-	public boolean inGame;
 
 	public WQClient() {
 		msgWorker = new MessageWorker();
@@ -31,13 +30,14 @@ public class WQClient {
 			e.printStackTrace();
 		}
 		
-		invitations = new ConcurrentHashMap<String , DatagramPacket>();
-		notify = false;
-		inGame = false;
+//		Initialize global client information
+		ClientStatus.invitations = new ConcurrentHashMap<String , DatagramPacket>();
+		ClientStatus.setInGame(false);
 		
-		UDPListener match = new UDPListener(udpSocket, notify, invitations);
-		Thread matchListener = new Thread(match);
-		matchListener.start();
+//		Starting udpListener for challenge request
+		UDPListener challengeReq = new UDPListener(udpSocket);
+		Thread udpListener = new Thread(challengeReq);
+		udpListener.start();
 	}
 
 	public static void main(String[] args) throws InterruptedException {
@@ -214,20 +214,20 @@ public class WQClient {
 			}
 			System.out.println(response);
 		}
-		
+
 		private void answerChallenge(Message message) {
 			if (!socket.isConnected()) {
 				System.out.println("You are not logged in");
 				return;
 			}
-			if (invitations.isEmpty()) {
+			if (ClientStatus.getInvitations().isEmpty()) {
 				System.out.println("There are not any invitations");
 				return;
 			}
-			
+
 			DatagramPacket receivePacket = null;
-			for (String friend : invitations.keySet()) {
-				receivePacket = (DatagramPacket) invitations.remove(friend);
+			for (String friend : ClientStatus.getInvitations().keySet()) {
+				receivePacket = (DatagramPacket) ClientStatus.getInvitations().remove(friend);
 				break;
 			}
 
@@ -240,15 +240,16 @@ public class WQClient {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			
+
 			if (message.operation.equals("N")) {
 				System.out.println("Challenge rejected!");
+				ClientStatus.setInGame(false);
 				return;
 			} else {
 				System.out.println("Challenge accepted! Wait for game starting...");
-				
+				ClientStatus.setInGame(false);
 			}
-	}
+		}
 
 		private void printHelp() {
 			System.out.println("usage: COMMAND [ARGS ...]\n"
@@ -266,14 +267,12 @@ public class WQClient {
 
 class UDPListener implements Runnable {
 	
-	public DatagramSocket socket;
-	public boolean inGame;
-	public ConcurrentHashMap<String, DatagramPacket> invitations;
+	public final static int TIMEOUT = 8000;
 	
-	public UDPListener(DatagramSocket udpSocket, boolean inGame, ConcurrentHashMap<String, DatagramPacket> invitations2) {
+	public DatagramSocket socket;
+	
+	public UDPListener(DatagramSocket udpSocket) {
 		socket = udpSocket;
-		this.inGame = inGame;
-		this.invitations = invitations2;
 	}
 
 	@Override
@@ -286,23 +285,76 @@ class UDPListener implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			
+
 			String sentence = new String(receivePacket.getData()).trim();
 			String args[] = sentence.split(" ");
 			String friend = args[0];
-			if (!inGame) {
-				if (!invitations.contains(friend)) {
+//			User is not in game
+			if (!ClientStatus.isInGame()) {
+//				friend doesn't already requested the challenge
+				if (!ClientStatus.getInvitations().contains(friend)) {
 					System.out.println("Notification: " + sentence);
-					invitations.put(friend, receivePacket);
+					ClientStatus.invitations.put(friend, receivePacket);
+//					With this flag setted here a user can receive only one request per time
+					ClientStatus.setInGame(true);
+					Timer timer = new Timer();
+					timer.schedule(new InvitationTimer(friend, receivePacket), TIMEOUT);
 				}
 			}
-//			TODO: set a timer for a friend request!
-//			Se l'utente risponde troppo tardi stampa che è passato troppo tempo
+
 		}
-		
 	}
-	
+
 }
+
+class InvitationTimer extends TimerTask {
+
+	public String friend;
+	public DatagramPacket receivePacket;
+
+	public InvitationTimer(String friend, DatagramPacket receivePacket) {
+		super();
+		this.friend = friend;
+		this.receivePacket = receivePacket;
+	}
+
+	public void run() {
+		if (ClientStatus.getInvitations().contains(receivePacket) && ClientStatus.getInvitations().get(friend) == receivePacket) {
+			ClientStatus.getInvitations().remove(friend);
+			ClientStatus.setInGame(false);
+			System.out.println("Your invitation from " + friend + " expired.");
+		}
+	}
+}
+
+
+class ClientStatus {
+    public static boolean inGame;
+    public static ConcurrentHashMap<String, DatagramPacket> invitations;
+    
+    public static synchronized boolean isInGame() {
+    	return inGame;
+    }
+    
+    public static synchronized void setInGame(boolean value) {
+    	inGame = value;
+    }
+    
+    public static synchronized ConcurrentHashMap<String, DatagramPacket> getInvitations() {
+    	return invitations;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 

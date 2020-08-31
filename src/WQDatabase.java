@@ -20,15 +20,15 @@ import com.google.gson.reflect.TypeToken;
 
 public class WQDatabase {
 
-	private final String pathDB = "WQ-Database.json";
+	private static final String DB_PATH = "WQ-Database.json";
 	public ConcurrentHashMap<String, User> database;
 
 	public WQDatabase() {
-		File WQDatabase = new File(pathDB);
-		if (WQDatabase.exists()) {
+		File databaseFile = new File(DB_PATH);
+		if (databaseFile.exists()) {
 			restoreDB();
 		} else {
-			this.database = new ConcurrentHashMap<>();
+			database = new ConcurrentHashMap<>();
 		}
 	}
 
@@ -117,7 +117,7 @@ public class WQDatabase {
 			// create Gson instance
 			Gson gson = new Gson();
 			// create a reader
-			Reader reader = Files.newBufferedReader(Paths.get(pathDB));
+			Reader reader = Files.newBufferedReader(Paths.get(DB_PATH));
 			// specify the correct parameterized type for database
 			Type mapType = new TypeToken<ConcurrentHashMap<String, User>>() {
 			}.getType();
@@ -134,7 +134,7 @@ public class WQDatabase {
 //	need to be synchronized since more than one thread can call this function
 	private synchronized void updateDB() {
 		try {
-			Writer writer = new FileWriter(pathDB);
+			Writer writer = new FileWriter(DB_PATH);
 			// convert map to JSON File
 			new Gson().toJson(this.database, writer);
 			// close the writer

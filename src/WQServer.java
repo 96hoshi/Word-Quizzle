@@ -98,7 +98,7 @@ public class WQServer {
 						SocketChannel client = (SocketChannel) key.channel();
 						Message messageInput = (Message) key.attachment();
 
-						handler.parseClient(messageInput, client);
+						handler.parseClient(messageInput, client, key);
 					}
 				} catch (IOException ex) {
 					key.cancel();

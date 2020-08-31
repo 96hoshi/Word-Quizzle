@@ -30,7 +30,7 @@ public class MessageWorker {
 		return msg;
 	}
 
-	public void sendMessage(Message msg, SocketChannel sock) {
+	public boolean sendMessage(Message msg, SocketChannel sock) {
 		String output = gson.toJson(msg);
 		byte[] message = new String(output).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
@@ -40,9 +40,27 @@ public class MessageWorker {
 				sock.write(outBuffer);
 			} catch (IOException e) {
 				e.printStackTrace();
+				return false;
 			}
 		}
 		outBuffer.clear();
+		return true;
+	}
+
+	public String receiveLine(SocketChannel socket) {
+		ByteBuffer buffer = ByteBuffer.allocate(516);
+	
+		int nread = 0;
+		try {
+			nread = socket.read(buffer);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		if (nread == -1) {
+			return "ERROR";
+		}
+		String response = new String(buffer.array(), StandardCharsets.UTF_8).trim();
+		return response;
 	}
 
 	public String sendAndReceive(Message message, SocketChannel socket) {
@@ -58,7 +76,9 @@ public class MessageWorker {
 		if (nread == -1) {
 			return "Error: Connection ended";
 		}
-		String response = new String(buffer.array(), StandardCharsets.US_ASCII);
+//		String response = new String(buffer.array(), StandardCharsets.US_ASCII);
+
+		String response = new String(buffer.array(), StandardCharsets.UTF_8).trim();
 		buffer.clear();
 
 		return response;
@@ -71,7 +91,7 @@ public class MessageWorker {
 		return msg;
 	}
 
-	public void sendResponse(String response, SocketChannel client, Selector selector, boolean isLogout) {
+	public boolean sendResponse(String response, SocketChannel client, Selector selector, boolean isLogout) {
 		byte[] message = new String(response).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
 
@@ -80,6 +100,7 @@ public class MessageWorker {
 				client.write(outBuffer);
 			} catch (IOException e) {
 				e.printStackTrace();
+				return false;
 			}
 		}
 		outBuffer.clear();
@@ -90,6 +111,7 @@ public class MessageWorker {
 				client.close();
 			} catch (IOException e) {
 				e.printStackTrace();
+				return false;
 			}
 		} else {
 //			set the channel ready for reading 
@@ -97,8 +119,25 @@ public class MessageWorker {
 				client.register(selector, SelectionKey.OP_READ);
 			} catch (ClosedChannelException e) {
 				e.printStackTrace();
+				return false;
 			}
 		}
+		return true;
+	}
+	
+	public boolean sendResponse(String response, SocketChannel client) {
+		byte[] message = new String(response).getBytes();
+		ByteBuffer outBuffer = ByteBuffer.wrap(message);
+
+		while (outBuffer.hasRemaining()) {
+			try {
+				client.write(outBuffer);
+			} catch (IOException e) {
+				e.printStackTrace();
+				return false;
+			}
+		}
+		return true;
 	}
 }
 

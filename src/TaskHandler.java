@@ -1,9 +1,5 @@
-import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
-import java.net.SocketException;
-import java.net.SocketTimeoutException;
+import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
@@ -11,6 +7,9 @@ import java.util.LinkedHashSet;
 import java.util.SortedSet;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class TaskHandler {
 
@@ -19,6 +18,7 @@ public class TaskHandler {
 	private MessageWorker msgWorker;
 	private ConcurrentHashMap<SocketChannel, String> onlineUsr;
 	private ConcurrentHashMap<String, InetSocketAddress> usrAddress;
+	private ThreadPoolExecutor tPool;
 
 	public TaskHandler(Selector selector, WQDatabase db, ConcurrentHashMap<SocketChannel, String> ou,
 			ConcurrentHashMap<String, InetSocketAddress> ua) {
@@ -27,9 +27,15 @@ public class TaskHandler {
 		this.onlineUsr = ou;
 		this.usrAddress = ua;
 		msgWorker = new MessageWorker();
+		
+		int nThreads = 4;
+		long keepAliveTime = 1;
+		LinkedBlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<Runnable>();
+		tPool = new ThreadPoolExecutor(nThreads, nThreads + 2, keepAliveTime, TimeUnit.SECONDS,
+				workQueue);
 	}
 
-	public void parseClient(Message message, SocketChannel client) {
+	public void parseClient(Message message, SocketChannel client, SelectionKey key) {
 
 		switch (message.operation) {
 			case "login":
@@ -51,7 +57,7 @@ public class TaskHandler {
 				rankingTask(message, client);
 				break;
 			case "challenge":
-				challengeTask(message, client);
+				challengeTask(message, client, key);
 				break;
 			default:
 				msgWorker.sendResponse("Invalid operation", client, selector, false);
@@ -89,6 +95,12 @@ public class TaskHandler {
 		String friendname = message.nick;
 		String username = message.opt;
 		String response = null;
+		
+		if (friendname.equals(username)) {
+			response = "Error: You cannot add yourself as friend!";
+			msgWorker.sendResponse(response, client, selector, false);
+			return;
+		}
 
 		if (database.findUser(friendname)) {
 			if (database.updateFriendList(username, friendname)) {
@@ -109,9 +121,9 @@ public class TaskHandler {
 
 		if (!onlineUsr.remove(username, client)) {
 			response = "Error: Invalid operation";
+		} else {
+			response = "Logout succeeded!";
 		}
-		response = "Logout succeeded!";
-		onlineUsr.remove(client);
 
 		msgWorker.sendResponse(response, client, selector, true);
 	}
@@ -142,12 +154,11 @@ public class TaskHandler {
 		msgWorker.sendResponse(response, client, selector, false);
 	}
 	
-	private void challengeTask(Message message, SocketChannel client) {
+	private void challengeTask(Message message, SocketChannel client, SelectionKey key) {
 		String friendname = message.nick;
 		String username = message.opt;
 		String response = null;
-		final int challengeRequestTime = 8000;
-		
+
 		if (friendname.equals(username)) {
 			response = "Error: You cannot challenge yourself!";
 			msgWorker.sendResponse(response, client, selector, false);
@@ -169,53 +180,17 @@ public class TaskHandler {
 			return;
 		}
 
-//		sending udp request to friend
-		DatagramSocket socket = null;
-		DatagramPacket sendPacket = null;
-		DatagramPacket receivePacket = null;
-		try {
-			socket = new DatagramSocket();
-			InetSocketAddress address = usrAddress.get(friendname);
-			byte[] sendData = new byte[64];
-			byte[] receiveData = new byte[64];
-			String sentence = username + " has challenged you!\nWhat is your answer? Y/N";
-			sendData = sentence.getBytes();
-			sendPacket = new DatagramPacket(sendData, sendData.length, address);
-			socket.send(sendPacket);
-			socket.setSoTimeout(challengeRequestTime);
-//			waiting for client answer
-			receivePacket = new DatagramPacket(receiveData, receiveData.length);
-			try {
-				socket.receive(receivePacket);
-			} catch (SocketTimeoutException e) {
-				// timeout exception.
-				response = friendname + " does not answer. Try later.";
-				msgWorker.sendResponse(response, client, selector, false);
-				socket.close();
-				return;
-			} catch (IOException e) {
-				e.printStackTrace();
-				socket.close();
-			}
-		} catch (SocketException e) {
-			e.printStackTrace();
-			socket.close();
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
-
-		String answer = new String(receivePacket.getData()).trim();
-		switch (answer) {
-			case "Y":
-				response = friendname + " has accepted your request!";
-				msgWorker.sendResponse(response, client, selector, false);
+//		client.register(selector, 0); this throws closed channel exception
+		key.interestOps(0);
+		SocketChannel friendSock = null;
+		for (SocketChannel sock : onlineUsr.keySet()) {
+			if (onlineUsr.get(sock).equals(friendname)) {
+				friendSock = sock;
 				break;
-			case "N":
-			default:
-				response = friendname + " has rejected your request!";
-				msgWorker.sendResponse(response, client, selector, false);
-			break;
+			}
 		}
+		ChallengeTask challenge = new ChallengeTask(message, msgWorker, client, friendSock, selector, usrAddress);
+		tPool.execute(challenge);
 	}
 
 	public void forcedLogout(SocketChannel client) {

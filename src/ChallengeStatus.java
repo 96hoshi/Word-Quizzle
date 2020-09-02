@@ -2,18 +2,18 @@ public class ChallengeStatus {
 
 	private int wordIndex;
 	private int score;
+	private int corrects;
+	private int errors;
 
 	public ChallengeStatus() {
-		this.setWordIndex(0);
-		this.setScore(0);
+		this.wordIndex = 0;
+		this.score = 0;
+		this.corrects = 0;
+		this.errors = 0;
 	}
 
 	public int getScore() {
 		return score;
-	}
-
-	public void setScore(int score) {
-		this.score = score;
 	}
 	
 	public void addScore(int score) {
@@ -23,12 +23,24 @@ public class ChallengeStatus {
 	public int getWordIndex() {
 		return wordIndex;
 	}
-
-	public void setWordIndex(int wordIndex) {
-		this.wordIndex = wordIndex;
-	}
 	
 	public void incrementWordIndex() {
 		this.wordIndex++;
+	}
+
+	public int getErrors() {
+		return errors;
+	}
+
+	public void incrementErrors() {
+		this.errors++;
+	}
+
+	public int getCorrects() {
+		return corrects;
+	}
+
+	public void incrementCorrects() {
+		this.corrects++;
 	}
 }

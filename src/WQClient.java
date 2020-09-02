@@ -6,13 +6,17 @@ import java.util.Scanner;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
+
 import java.net.*;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 
 public class WQClient {
 
 	public final static int PORT = 9999;
 	public final static String serverHost = "localhost";
+	private final static int CHALLENGE_TIME = 60000; 
 
 	private MessageWorker msgWorker;
 	private Scanner scan;
@@ -128,7 +132,6 @@ public class WQClient {
 				}
 				requestChallenge(message);
 				break;
-	//			ans_challenge y/n
 			case "Y":
 			case "N":
 				if (args > 1) {
@@ -265,6 +268,7 @@ public class WQClient {
 			ClientStatus.setInGame(false);
 			return;
 		}
+
 //		if the client arrive here the challenged friend has accepted
 		System.out.println("Your friend has accepted! Wait for game starting...");
 
@@ -274,7 +278,6 @@ public class WQClient {
 			ClientStatus.setInGame(false);
 			return;
 		}
-		System.out.println(serverResponse);
 		challengeLogic();
 
 	}
@@ -318,31 +321,62 @@ public class WQClient {
 				ClientStatus.setInGame(false);
 				return;
 			}
-			System.out.println(serverResponse);
 			challengeLogic();
 		}
 	}
 
 	private void challengeLogic() {
-		for (int i = 0; i < 8; i++) {
-			String line = msgWorker.receiveLine(socket);
-			System.out.println(line);
+		System.out.println("Game start!\nYou have 60 seconds to translate the following words:");
 
-			String input = scan.nextLine();
-			byte[] message = input.getBytes();
-			ByteBuffer outBuffer = ByteBuffer.wrap(message);
+		boolean end = false;
+		String line = msgWorker.receiveLine(socket);
+		try {
+			NonblockingBufferedReader reader = null;
+			try {
+				InputStreamReader fileInputStream = new InputStreamReader(System.in);
+				BufferedReader bufferedReader = new BufferedReader(fileInputStream);
+				reader = new NonblockingBufferedReader(bufferedReader);
 
-			while (outBuffer.hasRemaining()) {
-				try {
-					socket.write(outBuffer);
-				} catch (IOException e) {
-					e.printStackTrace();
+				final long startTime = System.currentTimeMillis();
+				System.out.println(line);
+
+				while ((System.currentTimeMillis() < startTime + CHALLENGE_TIME) && !end) {
+					while ((line = reader.readLine()) != null) {
+						byte[] message = line.getBytes();
+						ByteBuffer outBuffer = ByteBuffer.wrap(message);
+
+						while (outBuffer.hasRemaining()) {
+							try {
+								socket.write(outBuffer);
+							} catch (IOException e) {
+								e.printStackTrace();
+							}
+						}
+						outBuffer.clear();
+						line = msgWorker.receiveLine(socket);
+						if (line.equals("END")) {
+							end = true;
+							break;
+						}
+						System.out.println(line);
+					}
+					if (line == null) {
+						continue;
+					}
 				}
+			} finally {
+				reader.close();
 			}
-			outBuffer.clear();
+		} catch (java.io.IOException e) {
+			e.printStackTrace();
 		}
-//		TODO: handle end of the game and score receiving from server
-		System.out.println("END OF THE GAME!");
+//		TODO: quando esco dal ciclo devo SEMPRE mandare un messaggio a vuoto prima di 
+//		mandare una nuova richiesta al server
+		System.out.println("End of the game! Waiting for results...");
+
+		String endGame = msgWorker.receiveLine(socket);
+		System.out.println(endGame);
+
 		ClientStatus.setInGame(false);
 	}
 
@@ -408,7 +442,6 @@ class UDPListener implements Runnable {
 					timer.schedule(new InvitationTimer(friend, receivePacket), TIMEOUT);
 				}
 			}
-
 		}
 	}
 

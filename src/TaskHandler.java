@@ -189,7 +189,7 @@ public class TaskHandler {
 				break;
 			}
 		}
-		ChallengeTask challenge = new ChallengeTask(message, msgWorker, client, friendSock, selector, usrAddress);
+		ChallengeTask challenge = new ChallengeTask(message, msgWorker, client, friendSock, selector, database, usrAddress);
 		tPool.execute(challenge);
 	}
 

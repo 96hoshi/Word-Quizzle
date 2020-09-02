@@ -76,8 +76,6 @@ public class MessageWorker {
 		if (nread == -1) {
 			return "Error: Connection ended";
 		}
-//		String response = new String(buffer.array(), StandardCharsets.US_ASCII);
-
 		String response = new String(buffer.array(), StandardCharsets.UTF_8).trim();
 		buffer.clear();
 
@@ -86,12 +84,17 @@ public class MessageWorker {
 
 	public Message readMessage(ByteBuffer buffer) {
 		String string = StandardCharsets.UTF_8.decode(buffer).toString();
-		Message msg = gson.fromJson(string, Message.class);
+		Message msg = null;
+		try {
+			msg = gson.fromJson(string, Message.class);
+		} catch (Exception e) {
+			msg = null;
+		}
 
 		return msg;
 	}
 
-	public boolean sendResponse(String response, SocketChannel client, Selector selector, boolean isLogout) {
+	public synchronized boolean sendResponse(String response, SocketChannel client, Selector selector, boolean isLogout) {
 		byte[] message = new String(response).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
 
@@ -125,7 +128,7 @@ public class MessageWorker {
 		return true;
 	}
 	
-	public boolean sendResponse(String response, SocketChannel client) {
+	public synchronized boolean sendResponse(String response, SocketChannel client) {
 		byte[] message = new String(response).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
 

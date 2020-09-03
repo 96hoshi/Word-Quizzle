@@ -1,3 +1,9 @@
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -33,6 +39,9 @@ public class WQDatabase {
 	}
 
 	public boolean addUser(String username, String password) {
+		if (username == null || password == null)
+			throw new NullPointerException();
+
 		if (database.containsKey(username)) {
 			return false;
 		}
@@ -42,17 +51,26 @@ public class WQDatabase {
 	}
 
 	public void updateScore(String username, int score) {
+		if (username == null)
+			throw new NullPointerException();
+
 		User usr = (User) database.get(username);
 		usr.addScore(score);
 		updateDB();
 	}
 
 	public int getScore(String username) {
+		if (username == null)
+			throw new NullPointerException();
+
 		User usr = (User) database.get(username);
 		return usr.getScore();
 	}
 
 	public boolean updateFriendList(String username, String friendname) {
+		if (username == null || friendname == null)
+			throw new NullPointerException();
+
 		User usr = (User) database.get(username);
 		User friend = (User) database.get(friendname);
 
@@ -67,16 +85,24 @@ public class WQDatabase {
 	}
 
 	public LinkedHashSet<String> getFriendList(String username) {
+		if (username == null)
+			throw new NullPointerException();
+
 		User usr = (User) database.get(username);
 		return usr.getFriendlist();
-
 	}
 
 	public boolean findUser(String username) {
+		if (username == null)
+			throw new NullPointerException();
+
 		return database.containsKey(username);
 	}
 
 	public boolean matchPassword(String username, String password) {
+		if (username == null || password == null)
+			throw new NullPointerException();
+
 		User usr = (User) database.get(username);
 		if (usr != null) {
 			return usr.getPassword().equals(password);
@@ -85,6 +111,9 @@ public class WQDatabase {
 	}
 
 	public SortedSet<Entry<String, Integer>> getRanking(String username) {
+		if (username == null)
+			throw new NullPointerException();
+
 		Map<String, Integer> usrRanking = new TreeMap<>();
 		LinkedHashSet<String> friends = getFriendList(username);
 
@@ -98,9 +127,12 @@ public class WQDatabase {
 		return entriesSortedByValues(usrRanking);
 	}
 
-//	ordine decrescente
+//	Support function to order rankings in descending way
 	private static <K, V extends Comparable<? super V>> SortedSet<Map.Entry<K, V>> entriesSortedByValues(
 			Map<K, V> map) {
+		if (map == null)
+			throw new NullPointerException();
+
 		SortedSet<Map.Entry<K, V>> sortedEntries = new TreeSet<Map.Entry<K, V>>(new Comparator<Map.Entry<K, V>>() {
 			@Override
 			public int compare(Map.Entry<K, V> e1, Map.Entry<K, V> e2) {
@@ -112,32 +144,30 @@ public class WQDatabase {
 		return sortedEntries;
 	}
 
+//	Read from JSON file and restore Quizzle database 
 	private void restoreDB() {
 		try {
-			// create Gson instance
 			Gson gson = new Gson();
-			// create a reader
 			Reader reader = Files.newBufferedReader(Paths.get(DB_PATH));
-			// specify the correct parameterized type for database
+			// Specify the correct parameterized type for database
 			Type mapType = new TypeToken<ConcurrentHashMap<String, User>>() {
 			}.getType();
-			// convert JSON file to map
+			// Convert JSON file to map
 			ConcurrentHashMap<String, User> map = gson.fromJson(reader, mapType);
 			this.database = map;
-			// close reader
 			reader.close();
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
 	}
 
-//	need to be synchronized since more than one thread can call this function
+//	Need to be synchronized since more than one thread can call this function
 	private synchronized void updateDB() {
 		try {
 			Writer writer = new FileWriter(DB_PATH);
-			// convert map to JSON File
+			// Convert map to JSON File
 			new Gson().toJson(this.database, writer);
-			// close the writer
+			// Close the writer
 			writer.close();
 		} catch (IOException e) {
 			e.printStackTrace();

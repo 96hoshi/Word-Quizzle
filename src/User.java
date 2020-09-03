@@ -1,3 +1,9 @@
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.util.LinkedHashSet;
 
 public class User {
@@ -8,6 +14,9 @@ public class User {
 	private int score;
 
 	public User(String username, String password) {
+		if (username == null || password == null)
+			throw new NullPointerException();
+
 		this.username = username;
 		this.password = password;
 		friendList = new LinkedHashSet<String>();
@@ -35,6 +44,9 @@ public class User {
 	}
 
 	public boolean addFriend(String friendname) {
+		if (friendname == null)
+			throw new NullPointerException();
+
 		return friendList.add(friendname);
 	}
 }

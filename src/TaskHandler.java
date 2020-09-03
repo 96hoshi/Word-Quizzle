@@ -1,3 +1,9 @@
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -22,6 +28,9 @@ public class TaskHandler {
 
 	public TaskHandler(Selector selector, WQDatabase db, ConcurrentHashMap<SocketChannel, String> ou,
 			ConcurrentHashMap<String, InetSocketAddress> ua) {
+		if (selector == null || db == null || ou == null || ua == null)
+			throw new NullPointerException();
+
 		this.selector = selector;
 		this.database = db;
 		this.onlineUsr = ou;
@@ -36,6 +45,13 @@ public class TaskHandler {
 	}
 
 	public void parseClient(Message message, SocketChannel client, SelectionKey key) {
+		if (client == null || key == null)
+			throw new NullPointerException();
+
+		if (message == null) {
+			msgWorker.sendResponse("Invalid operation", client, selector, false);
+			return;
+		}
 
 		switch (message.operation) {
 			case "login":
@@ -71,8 +87,6 @@ public class TaskHandler {
 		int udpPort = message.udpPort;
 		String response = null;
 
-//		TODO: valutare se mandare direttamente login failed, invece di specificare
-//		se l'user o la password sono sbagliate
 		if (database.findUser(username)) {
 			if (database.matchPassword(username, password)) {
 				if (onlineUsr.put(client, username) != null) {
@@ -180,7 +194,6 @@ public class TaskHandler {
 			return;
 		}
 
-//		client.register(selector, 0); this throws closed channel exception
 		key.interestOps(0);
 		SocketChannel friendSock = null;
 		for (SocketChannel sock : onlineUsr.keySet()) {
@@ -189,7 +202,8 @@ public class TaskHandler {
 				break;
 			}
 		}
-		ChallengeTask challenge = new ChallengeTask(message, msgWorker, client, friendSock, selector, database, usrAddress);
+		ChallengeTask challenge = new ChallengeTask(message, msgWorker, client, friendSock, selector, database,
+				usrAddress, onlineUsr);
 		tPool.execute(challenge);
 	}
 

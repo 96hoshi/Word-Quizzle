@@ -56,7 +56,6 @@ public class MessageWorker {
 				return false;
 			}
 		}
-		outBuffer.clear();
 		return true;
 	}
 
@@ -96,7 +95,6 @@ public class MessageWorker {
 			return "Error: Connection ended";
 		}
 		String response = new String(buffer.array(), StandardCharsets.UTF_8).trim();
-		buffer.clear();
 
 		return response;
 	}
@@ -132,7 +130,6 @@ public class MessageWorker {
 				return false;
 			}
 		}
-		outBuffer.clear();
 
 		if (isLogout) {
 			try {

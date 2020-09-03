@@ -1,3 +1,9 @@
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.nio.*;
 import java.nio.channels.*;
 import java.rmi.RemoteException;
@@ -25,7 +31,7 @@ public class WQServer {
 			RegistrationTask regService = new RegistrationTask(db);
 			// Export the object
 			RegistrationRemote stub = (RegistrationRemote) UnicastRemoteObject.exportObject(regService, 6789);
-			// creation of a registry
+			// Creation of a registry
 			Registry registry = LocateRegistry.createRegistry(6789);
 			registry.rebind("WQ-Registration", stub);
 		} catch (RemoteException e) {

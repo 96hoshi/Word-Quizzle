@@ -1,3 +1,9 @@
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -74,7 +80,8 @@ public class TranslationHandler {
 //			Retrieve all matched translations
 			for (int j = 0; j < jsonArr.size(); j++) {
 				JsonObject tmpJobj = jsonArr.get(j).getAsJsonObject();
-				translations[i].add(tmpJobj.get("translation").getAsString().toLowerCase().replaceAll("[^a-zA-Z0\\u0020]", ""));
+				translations[i].add(
+						tmpJobj.get("translation").getAsString().toLowerCase().replaceAll("[^a-zA-Z0\\u0020]", ""));
 			}
 		}
 		return translations;

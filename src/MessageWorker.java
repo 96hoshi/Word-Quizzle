@@ -1,3 +1,10 @@
+
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
@@ -17,6 +24,9 @@ public class MessageWorker {
 	}
 
 	public Message writeMessage(String input) {
+		if (input == null)
+			throw new NullPointerException();
+
 		String s[] = input.split(" ");
 		Message msg = new Message();
 
@@ -31,6 +41,9 @@ public class MessageWorker {
 	}
 
 	public boolean sendMessage(Message msg, SocketChannel sock) {
+		if (msg == null || sock == null)
+			throw new NullPointerException();
+
 		String output = gson.toJson(msg);
 		byte[] message = new String(output).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
@@ -47,12 +60,15 @@ public class MessageWorker {
 		return true;
 	}
 
-	public String receiveLine(SocketChannel socket) {
+	public String receiveLine(SocketChannel sock) {
+		if (sock == null)
+			throw new NullPointerException();
+
 		ByteBuffer buffer = ByteBuffer.allocate(516);
-	
+
 		int nread = 0;
 		try {
-			nread = socket.read(buffer);
+			nread = sock.read(buffer);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -63,13 +79,16 @@ public class MessageWorker {
 		return response;
 	}
 
-	public String sendAndReceive(Message message, SocketChannel socket) {
-		sendMessage(message, socket);
+	public String sendAndReceive(Message msg, SocketChannel sock) {
+		if (msg == null || sock == null)
+			throw new NullPointerException();
+
+		sendMessage(msg, sock);
 		ByteBuffer buffer = ByteBuffer.allocate(516);
 
 		int nread = 0;
 		try {
-			nread = socket.read(buffer);
+			nread = sock.read(buffer);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -83,6 +102,9 @@ public class MessageWorker {
 	}
 
 	public Message readMessage(ByteBuffer buffer) {
+		if (buffer == null)
+			throw new NullPointerException();
+
 		String string = StandardCharsets.UTF_8.decode(buffer).toString();
 		Message msg = null;
 		try {
@@ -94,7 +116,11 @@ public class MessageWorker {
 		return msg;
 	}
 
-	public synchronized boolean sendResponse(String response, SocketChannel client, Selector selector, boolean isLogout) {
+	public synchronized boolean sendResponse(String response, SocketChannel client, Selector selector,
+			boolean isLogout) {
+		if (response == null || client == null || selector == null)
+			throw new NullPointerException();
+
 		byte[] message = new String(response).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
 
@@ -127,8 +153,11 @@ public class MessageWorker {
 		}
 		return true;
 	}
-	
+
 	public synchronized boolean sendResponse(String response, SocketChannel client) {
+		if (response == null || client == null)
+			throw new NullPointerException();
+
 		byte[] message = new String(response).getBytes();
 		ByteBuffer outBuffer = ByteBuffer.wrap(message);
 

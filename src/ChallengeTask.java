@@ -1,8 +1,13 @@
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
-import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
@@ -18,8 +23,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ChallengeTask implements Runnable {
 
-	private static final int NUM_WORDS = 8;
+	private static final int REQUEST_TIME = 8000;
 	private static final int CHALLENGE_TIME = 60000;
+	private static final int NUM_WORDS = 8;
 
 	private Message message;
 	private SocketChannel clientSock;
@@ -28,6 +34,7 @@ public class ChallengeTask implements Runnable {
 	private Selector selector;
 	private WQDatabase database;
 	private ConcurrentHashMap<String, InetSocketAddress> usrAddress;
+	private ConcurrentHashMap<SocketChannel, String> onlineUsr;
 
 	private DatagramSocket udpSocket;
 	private Selector challengeSel;
@@ -38,7 +45,12 @@ public class ChallengeTask implements Runnable {
 	private boolean running = true;
 
 	public ChallengeTask(Message message, MessageWorker msgWorker, SocketChannel client, SocketChannel friendSock,
-			Selector sel, WQDatabase db, ConcurrentHashMap<String, InetSocketAddress> ua) {
+			Selector sel, WQDatabase db, ConcurrentHashMap<String, InetSocketAddress> ua,
+			ConcurrentHashMap<SocketChannel, String> ou) {
+		if (message == null || msgWorker == null || client == null || friendSock == null || sel == null || db == null
+				|| ua == null || ou == null)
+			throw new NullPointerException();
+
 		this.message = message;
 		this.clientSock = client;
 		this.friendSock = friendSock;
@@ -46,6 +58,7 @@ public class ChallengeTask implements Runnable {
 		this.selector = sel;
 		this.usrAddress = ua;
 		this.database = db;
+		this.onlineUsr = ou;
 
 		udpSocket = null;
 		translHandler = new TranslationHandler();
@@ -70,7 +83,6 @@ public class ChallengeTask implements Runnable {
 		String friendname = message.nick;
 		String username = message.opt;
 		String response = null;
-		final int challengeRequestTime = 8000;
 
 //		Setting udp datagrams
 		DatagramPacket sendPacket = null;
@@ -79,7 +91,7 @@ public class ChallengeTask implements Runnable {
 //		Sending udp request to friend
 		try {
 			udpSocket = new DatagramSocket();
-			udpSocket.setSoTimeout(challengeRequestTime);
+			udpSocket.setSoTimeout(REQUEST_TIME);
 
 			InetSocketAddress address = usrAddress.get(friendname);
 			String challengeReq = username + " has challenged you!\nWhat is your answer? Y/N";
@@ -92,21 +104,20 @@ public class ChallengeTask implements Runnable {
 			try {
 				udpSocket.receive(receivePacket);
 			} catch (SocketTimeoutException e) {
-				// timeout exception.
+				// If client does not answer handle timeout exception
 				response = "TIMEOUT";
 				msgWorker.sendResponse(response, clientSock, selector, false);
 				selector.wakeup();
 				udpSocket.close();
 				return;
 			}
-		} catch (SocketException e) {
-			e.printStackTrace();
+		} catch (IOException ioe) {
+			ioe.printStackTrace();
+			msgWorker.sendResponse("ERROR", clientSock, selector, false);
+			selector.wakeup();
 			udpSocket.close();
-		} catch (IOException e1) {
-			e1.printStackTrace();
-			udpSocket.close();
+			return;
 		}
-
 //		Parse friend answer
 		String friendAnswer = new String(receivePacket.getData()).trim();
 		if (!friendAnswer.equals("Y")) {
@@ -139,17 +150,26 @@ public class ChallengeTask implements Runnable {
 
 		} catch (ClosedChannelException cce) {
 			cce.printStackTrace();
+			closeChannels();
 			return;
-		} catch (IOException e) {
-			e.printStackTrace();
+		} catch (IOException ioe) {
+//			Translation Error
+			msgWorker.sendResponse("ERROR", clientSock, selector, false);
+			msgWorker.sendResponse("ERROR", friendSock, selector, false);
+			selector.wakeup();
+			closeChannels();
+			return;
 		}
+//		The opponent accepted the challenge and they are both ready to start
 		if (!sendToBoth("START")) {
-//			TODO: handle this
+			exitProcedure(clientSock);
+			exitProcedure(friendSock);
 			return;
 		}
+
+//		Setting timer
 		final long startTime = System.currentTimeMillis();
 		timeout.start();
-		// The opponent accepted the challenge and they are both ready to start
 		try {
 			while (running) {
 				challengeSel.select();
@@ -169,11 +189,14 @@ public class ChallengeTask implements Runnable {
 						continue;
 					} else if (key.isWritable()) {
 						if (!sendWord(key, words)) {
+							exitProcedure((SocketChannel) key.channel());
 							return;
 						}
 					} else if (key.isReadable()) {
-						if (!readTranslation(key, words))
+						if (!readTranslation(key, words)) {
+							exitProcedure((SocketChannel) key.channel());
 							return;
+						}
 					}
 				}
 				// If both have translated all the words, exit
@@ -185,12 +208,17 @@ public class ChallengeTask implements Runnable {
 					running = false;
 				}
 			}
-			sendScore(username, friendname);
+			if (!sendScore(username, friendname)) {
+				exitProcedure(clientSock);
+				exitProcedure(friendSock);
+				return;
+			}
 
 			challengeSel.close();
 			udpSocket.close();
 		} catch (IOException ioe) {
 			ioe.printStackTrace();
+			return;
 		}
 
 		try {
@@ -199,6 +227,7 @@ public class ChallengeTask implements Runnable {
 			selector.wakeup();
 		} catch (ClosedChannelException e) {
 			e.printStackTrace();
+			return;
 		}
 	}
 
@@ -228,26 +257,27 @@ public class ChallengeTask implements Runnable {
 			nread = sock.read(buffer);
 		} catch (IOException e) {
 			e.printStackTrace();
+			return false;
 		}
 		if (nread == -1) {
-//			TODO: handle error
 			return false;
 		}
 		String translation = new String(buffer.array(), StandardCharsets.UTF_8).toLowerCase().trim();
-		int index = status.get(sock).getWordIndex();
+		ChallengeStatus challenger = (ChallengeStatus) status.get(sock);
+		int index = challenger.getWordIndex();
 
 		if (correctTranslation(translation, words, index)) {
-			status.get(sock).incrementCorrects();
-			status.get(sock).addScore(2);
+			challenger.incrementCorrects();
+			challenger.addScore(2);
 		} else {
-			status.get(sock).incrementErrors();
-			status.get(sock).addScore(-1);
+			challenger.incrementErrors();
+			challenger.addScore(-1);
 		}
-		status.get(sock).incrementWordIndex();
+		challenger.incrementWordIndex();
 
 		try {
 //			Set the client ready for the next word
-			if (status.get(sock).getWordIndex() < NUM_WORDS) {
+			if (challenger.getWordIndex() < NUM_WORDS) {
 				sock.register(challengeSel, SelectionKey.OP_WRITE);
 			} else {
 //				There are no more words
@@ -256,22 +286,27 @@ public class ChallengeTask implements Runnable {
 			}
 		} catch (ClosedChannelException e) {
 			e.printStackTrace();
+			return false;
 		}
 		return true;
 	}
 
 //	Check the translation correction
 	private boolean correctTranslation(String translated, LinkedList<String>[] words, int index) {
-		if (translated == null)
+		if (translated == null) {
 			return false;
+		}
 
-		for (int i = 1; i < words[index].size(); i++)
-			if (translated.equals(words[index].get(i)))
+		for (int i = 1; i < words[index].size(); i++) {
+			if (translated.equals(words[index].get(i))) {
 				return true;
+			}
+		}
 
 		return false;
 	}
 
+//	Calculate challenger score and send result string
 	private boolean sendScore(String username, String friendname) {
 		int clientScore = status.get(clientSock).getScore();
 		int friendScore = status.get(friendSock).getScore();
@@ -318,4 +353,42 @@ public class ChallengeTask implements Runnable {
 		return res;
 	}
 
+	private void closeChannels() {
+		udpSocket.close();
+		try {
+			challengeSel.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void disconnectClient(SocketChannel sock) {
+		try {
+			sock.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		onlineUsr.remove(sock);
+		System.out.println("Connection Error: client disconnected");
+	}
+
+//	TODO: Exit due to communication error. Bugged?
+	private void exitProcedure(SocketChannel sock) {
+		if (sock.equals(clientSock)) {
+			if (!msgWorker.sendResponse("ERROR", friendSock, selector, false)) {
+				disconnectClient(friendSock);
+			}
+			disconnectClient(clientSock);
+			selector.wakeup();
+			closeChannels();
+		}
+		if (sock.equals(friendSock)) {
+			if (!msgWorker.sendResponse("ERROR", clientSock, selector, false)) {
+				disconnectClient(clientSock);
+			}
+			disconnectClient(friendSock);
+			selector.wakeup();
+			closeChannels();
+		}
+	}
 }

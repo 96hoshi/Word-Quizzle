@@ -40,7 +40,7 @@ public class TaskHandler {
 		int nThreads = 4;
 		long keepAliveTime = 1;
 		LinkedBlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<Runnable>();
-		tPool = new ThreadPoolExecutor(nThreads, nThreads + 2, keepAliveTime, TimeUnit.SECONDS,
+		tPool = new ThreadPoolExecutor(nThreads, nThreads*2, keepAliveTime, TimeUnit.SECONDS,
 				workQueue);
 	}
 
@@ -49,6 +49,7 @@ public class TaskHandler {
 			throw new NullPointerException();
 
 		if (message == null) {
+			System.out.println("Null message received");
 			msgWorker.sendResponse("Invalid operation", client, selector, false);
 			return;
 		}
@@ -133,7 +134,7 @@ public class TaskHandler {
 		String username = message.opt;
 		String response = null;
 
-		if (!onlineUsr.remove(username, client)) {
+		if (!onlineUsr.remove(client, username)) {
 			response = "Error: Invalid operation";
 		} else {
 			response = "Logout succeeded!";

@@ -1,12 +1,15 @@
+/**
+ * @author Marta Lo Cascio
+ * @matricola 532686
+ * @project RCL - Word Quizzle
+ */
+
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.Scanner;
-import java.util.Timer;
-import java.util.TimerTask;
+//import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
-
 import java.net.*;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,21 +22,26 @@ public class WQClient {
 	private final static int CHALLENGE_TIME = 60000; 
 
 	private MessageWorker msgWorker;
-	private Scanner scan;
 	private SocketChannel socket;
 	private String nick;
 	private DatagramSocket udpSocket;
+	
+	private NonblockingBufferedReader reader;
 
 	public WQClient() {
 		msgWorker = new MessageWorker();
-		scan = new Scanner(System.in);
 		socket = null;
 		nick = null;
 		try {
 			udpSocket = new DatagramSocket();
 		} catch (SocketException e) {
-			e.printStackTrace();
+			System.err.println("Cannot open UDP Socket");
+			System.exit(1);
 		}
+		
+		InputStreamReader fileInputStream = new InputStreamReader(System.in);
+		BufferedReader bufferedReader = new BufferedReader(fileInputStream);
+		reader = new NonblockingBufferedReader(bufferedReader);
 
 //		Initialize global client information
 		ClientStatus.invitations = new ConcurrentHashMap<String, DatagramPacket>();
@@ -45,29 +53,40 @@ public class WQClient {
 		udpListener.start();
 	}
 
-	public static void main(String[] args) throws InterruptedException {
+	public static void main(String[] args) {
 		WQClient client = new WQClient();
 
 		if (args.length > 0) {
 			if (args[0].equals("--help")) {
 				client.printHelp();
 			} else {
-				System.out.println("Correct usage: WQClient [--help]");
+				System.err.println("Correct usage: WQClient [--help]");
 				System.exit(0);
 			}
 		}
 
+//		Main client loop
 		while (true) {
-			String input = client.scan.nextLine();
-
-//			Analyze and send the message to the server
-			client.parseInput(input);
+			String input = null;
+			try {
+				while ((input = client.reader.readLine()) != null) {
+//					Analyze and send the message to the server
+					client.parseInput(input);
+				}
+				if (input == null) {
+					continue;
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 
 	private void parseInput(String input) throws NullPointerException {
-		if (input == null)
-			throw new NullPointerException();
+		if (input == null) {
+			System.out.println("Wrong usage");
+			return;
+		}
 
 		int args = input.split(" ").length;
 
@@ -133,7 +152,9 @@ public class WQClient {
 				requestChallenge(message);
 				break;
 			case "Y":
+			case "y":
 			case "N":
+			case "n":
 				if (args > 1) {
 					System.out.println("Not a valid answer");
 					break;
@@ -195,7 +216,7 @@ public class WQClient {
 	}
 
 	private void logout(Message message) {
-		if (!socket.isConnected()) {
+		if (socket == null || !socket.isConnected()) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -222,7 +243,7 @@ public class WQClient {
 	}
 
 	private void request(Message message) {
-		if (!socket.isConnected()) {
+		if (socket == null || !socket.isConnected()) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -241,7 +262,7 @@ public class WQClient {
 	}
 
 	private void requestChallenge(Message message) {
-		if (!socket.isConnected()) {
+		if (socket == null || !socket.isConnected()) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -264,26 +285,35 @@ public class WQClient {
 			return;
 		}
 		if (response.equals("TIMEOUT")) {
-			System.out.println("Your friend does not answered. Try later.");
+			System.out.println("Your friend does not answer. Try later.");
+			ClientStatus.setInGame(false);
+			return;
+		}
+		if (response.equals("ERROR")) {
+			System.out.println("An error has occurred. Try later.");
 			ClientStatus.setInGame(false);
 			return;
 		}
 
-//		if the client arrive here the challenged friend has accepted
-		System.out.println("Your friend has accepted! Wait for game starting...");
-
-		String serverResponse = msgWorker.receiveLine(socket);
-		if (!serverResponse.equals("START")) {
-			System.out.println(serverResponse);
-			ClientStatus.setInGame(false);
-			return;
+//		If the client arrive here the challenged friend has accepted their request
+		if (response.equals("Y")) {
+			System.out.println("Your friend has accepted! Wait for game starting...");
+	
+			String serverResponse = msgWorker.receiveLine(socket);
+			if (!serverResponse.equals("START")) {
+				System.out.println("An error has occurred. Try later.");
+				ClientStatus.setInGame(false);
+				return;
+			}
+			challengeLogic();
+		} else {
+			System.out.println(response);
 		}
-		challengeLogic();
 
 	}
 
 	private void answerChallenge(Message message) {
-		if (!socket.isConnected()) {
+		if (socket == null || !socket.isConnected()) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -300,7 +330,7 @@ public class WQClient {
 
 		InetAddress IPAddress = receivePacket.getAddress();
 		int port = receivePacket.getPort();
-		byte[] responseData = message.operation.getBytes();
+		byte[] responseData = message.operation.toUpperCase().getBytes();
 		DatagramPacket sendPacket = new DatagramPacket(responseData, responseData.length, IPAddress, port);
 		try {
 			udpSocket.send(sendPacket);
@@ -308,7 +338,7 @@ public class WQClient {
 			e.printStackTrace();
 		}
 
-		if (message.operation.equals("N")) {
+		if (message.operation.toUpperCase().equals("N")) {
 			System.out.println("Challenge rejected!");
 			ClientStatus.setInGame(false);
 			return;
@@ -317,7 +347,7 @@ public class WQClient {
 			String serverResponse = msgWorker.receiveLine(socket);
 
 			if (!serverResponse.equals("START")) {
-				System.out.println(serverResponse);
+				System.out.println("An error has occurred. Try later.");
 				ClientStatus.setInGame(false);
 				return;
 			}
@@ -325,53 +355,52 @@ public class WQClient {
 		}
 	}
 
+//	Handle all messages with server during a challenge
 	private void challengeLogic() {
 		System.out.println("Game start!\nYou have 60 seconds to translate the following words:");
 
 		boolean end = false;
 		String line = msgWorker.receiveLine(socket);
+
+		final long startTime = System.currentTimeMillis();
+		System.out.println(line);
 		try {
-			NonblockingBufferedReader reader = null;
-			try {
-				InputStreamReader fileInputStream = new InputStreamReader(System.in);
-				BufferedReader bufferedReader = new BufferedReader(fileInputStream);
-				reader = new NonblockingBufferedReader(bufferedReader);
+			while ((System.currentTimeMillis() < startTime + CHALLENGE_TIME) && !end) {
+				while ((line = reader.readLine()) != null) {
+					byte[] message = line.getBytes();
+					ByteBuffer outBuffer = ByteBuffer.wrap(message);
 
-				final long startTime = System.currentTimeMillis();
-				System.out.println(line);
-
-				while ((System.currentTimeMillis() < startTime + CHALLENGE_TIME) && !end) {
-					while ((line = reader.readLine()) != null) {
-						byte[] message = line.getBytes();
-						ByteBuffer outBuffer = ByteBuffer.wrap(message);
-
-						while (outBuffer.hasRemaining()) {
-							try {
-								socket.write(outBuffer);
-							} catch (IOException e) {
-								e.printStackTrace();
-							}
+					while (outBuffer.hasRemaining()) {
+						try {
+							socket.write(outBuffer);
+						} catch (IOException e) {
+							e.printStackTrace();
 						}
-						outBuffer.clear();
-						line = msgWorker.receiveLine(socket);
-						if (line.equals("END")) {
-							end = true;
-							break;
-						}
-						System.out.println(line);
 					}
-					if (line == null) {
-						continue;
+					outBuffer.clear();
+					line = msgWorker.receiveLine(socket);
+					if (line.equals("END")) {
+						end = true;
+						break;
 					}
+					if (line.equals("ERROR")) {
+						System.out.println("An error has occurred. Challenge interrupted.");
+						ClientStatus.setInGame(false);
+						return;
+					}
+					System.out.println(line);
 				}
-			} finally {
-				reader.close();
+				if (line == null) {
+					continue;
+				}
 			}
-		} catch (java.io.IOException e) {
-			e.printStackTrace();
+		} catch (IOException ioe) {
+			ioe.printStackTrace();
 		}
-//		TODO: quando esco dal ciclo devo SEMPRE mandare un messaggio a vuoto prima di 
-//		mandare una nuova richiesta al server
+
+//		TODO: quando esco dal ciclo a causa di un errore i messaggi sono "sfalzati"
+//		mando una richiesta e ricevo invalid operation, mando un altro messaggio e 
+//		risponde alla richiesta di prima
 		System.out.println("End of the game! Waiting for results...");
 
 		String endGame = msgWorker.receiveLine(socket);
@@ -394,18 +423,25 @@ public class WQClient {
 	}
 
 	private void exit() {
+		if (socket == null) {
+			reader.close();
+			System.exit(0);
+		}
+
 		if (socket.isConnected()) {
 			try {
+				reader.close();
 				socket.close();
 				udpSocket.close();
 			} catch (IOException e) {
-				System.exit(-1);
+				System.exit(1);
 			}
 		}
 		System.exit(0);
 	}
 }
 
+// Listener Class for friends invitations
 class UDPListener implements Runnable {
 
 	public final static int TIMEOUT = 8000;
@@ -436,10 +472,29 @@ class UDPListener implements Runnable {
 				if (!ClientStatus.getInvitations().contains(friend)) {
 					System.out.println("Notification: " + sentence);
 					ClientStatus.invitations.put(friend, receivePacket);
-//					With this flag settled here a user can receive only one request per time
+//					With this flag a user can receive only one request per time
 					ClientStatus.setInGame(true);
-					Timer timer = new Timer();
-					timer.schedule(new InvitationTimer(friend, receivePacket), TIMEOUT);
+
+//					Set a timer for invitation expiry time
+					Thread timer = new Thread() {
+						@Override
+						public void run() {
+							String frnd = friend;
+							DatagramPacket packet = receivePacket;
+							try {
+								Thread.sleep(TIMEOUT);
+							} catch (InterruptedException e) {
+								return;
+							}
+							if (ClientStatus.getInvitations().contains(packet)
+									&& ClientStatus.getInvitations().get(frnd) == packet) {
+								ClientStatus.getInvitations().remove(frnd);
+								ClientStatus.setInGame(false);
+								System.out.println("Your invitation from " + frnd + " expired.");
+							}
+						}
+					};
+					timer.start();
 				}
 			}
 		}
@@ -447,27 +502,7 @@ class UDPListener implements Runnable {
 
 }
 
-class InvitationTimer extends TimerTask {
-
-	public String friend;
-	public DatagramPacket receivePacket;
-
-	public InvitationTimer(String friend, DatagramPacket receivePacket) {
-		super();
-		this.friend = friend;
-		this.receivePacket = receivePacket;
-	}
-
-	public void run() {
-		if (ClientStatus.getInvitations().contains(receivePacket)
-				&& ClientStatus.getInvitations().get(friend) == receivePacket) {
-			ClientStatus.getInvitations().remove(friend);
-			ClientStatus.setInGame(false);
-			System.out.println("Your invitation from " + friend + " expired.");
-		}
-	}
-}
-
+// Status class to handle challenges and invitations
 class ClientStatus {
 	public static boolean inGame;
 	public static ConcurrentHashMap<String, DatagramPacket> invitations;

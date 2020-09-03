@@ -8,7 +8,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-//import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.net.*;
 import java.io.BufferedReader;
@@ -20,6 +19,7 @@ public class WQClient {
 	public final static int PORT = 9999;
 	public final static String serverHost = "localhost";
 	private final static int CHALLENGE_TIME = 60000; 
+	private final static int NUM_WORDS = 8;
 
 	private MessageWorker msgWorker;
 	private SocketChannel socket;
@@ -65,16 +65,14 @@ public class WQClient {
 			}
 		}
 
+		String input = null;
+
 //		Main client loop
 		while (true) {
-			String input = null;
 			try {
 				while ((input = client.reader.readLine()) != null) {
 //					Analyze and send the message to the server
 					client.parseInput(input);
-				}
-				if (input == null) {
-					continue;
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -187,7 +185,7 @@ public class WQClient {
 	}
 
 	private void login(Message message) {
-		if (socket == null || !socket.isConnected()) {
+		if (socket == null || !socket.isConnected() || nick == null) {
 			SocketAddress address = new InetSocketAddress(serverHost, PORT);
 			try {
 				socket = SocketChannel.open(address);
@@ -216,7 +214,7 @@ public class WQClient {
 	}
 
 	private void logout(Message message) {
-		if (socket == null || !socket.isConnected()) {
+		if (socket == null || !socket.isConnected() || nick == null) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -243,7 +241,7 @@ public class WQClient {
 	}
 
 	private void request(Message message) {
-		if (socket == null || !socket.isConnected()) {
+		if (socket == null || !socket.isConnected() || nick == null) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -262,7 +260,7 @@ public class WQClient {
 	}
 
 	private void requestChallenge(Message message) {
-		if (socket == null || !socket.isConnected()) {
+		if (socket == null || !socket.isConnected() || nick == null) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -313,7 +311,7 @@ public class WQClient {
 	}
 
 	private void answerChallenge(Message message) {
-		if (socket == null || !socket.isConnected()) {
+		if (socket == null || !socket.isConnected() || nick == null) {
 			System.out.println("You are not logged in");
 			return;
 		}
@@ -359,13 +357,13 @@ public class WQClient {
 	private void challengeLogic() {
 		System.out.println("Game start!\nYou have 60 seconds to translate the following words:");
 
-		boolean end = false;
+		int i = 0;
 		String line = msgWorker.receiveLine(socket);
 
 		final long startTime = System.currentTimeMillis();
 		System.out.println(line);
 		try {
-			while ((System.currentTimeMillis() < startTime + CHALLENGE_TIME) && !end) {
+			while ((System.currentTimeMillis() < startTime + CHALLENGE_TIME) && i < NUM_WORDS) {
 				while ((line = reader.readLine()) != null) {
 					byte[] message = line.getBytes();
 					ByteBuffer outBuffer = ByteBuffer.wrap(message);
@@ -378,11 +376,11 @@ public class WQClient {
 						}
 					}
 					outBuffer.clear();
-					line = msgWorker.receiveLine(socket);
-					if (line.equals("END")) {
-						end = true;
+					i++;
+					if (i == NUM_WORDS) {
 						break;
 					}
+					line = msgWorker.receiveLine(socket);
 					if (line.equals("ERROR")) {
 						System.out.println("An error has occurred. Challenge interrupted.");
 						ClientStatus.setInGame(false);
@@ -390,22 +388,21 @@ public class WQClient {
 					}
 					System.out.println(line);
 				}
-				if (line == null) {
-					continue;
-				}
 			}
 		} catch (IOException ioe) {
 			ioe.printStackTrace();
 		}
 
-//		TODO: quando esco dal ciclo a causa di un errore i messaggi sono "sfalzati"
-//		mando una richiesta e ricevo invalid operation, mando un altro messaggio e 
-//		risponde alla richiesta di prima
 		System.out.println("End of the game! Waiting for results...");
 
 		String endGame = msgWorker.receiveLine(socket);
+		if (endGame.equals("ERROR")) {
+			System.out.println("An error has occurred. Challenge interrupted.");
+			ClientStatus.setInGame(false);
+			return;
+		}
+//		If the client arrives here, print score result.
 		System.out.println(endGame);
-
 		ClientStatus.setInGame(false);
 	}
 

@@ -43,6 +43,7 @@ public class ChallengeTask implements Runnable {
 
 	private Thread timeout;
 	private boolean running = true;
+	private boolean exit = false;
 
 	public ChallengeTask(Message message, MessageWorker msgWorker, SocketChannel client, SocketChannel friendSock,
 			Selector sel, WQDatabase db, ConcurrentHashMap<String, InetSocketAddress> ua,
@@ -82,7 +83,6 @@ public class ChallengeTask implements Runnable {
 	public void run() {
 		String friendname = message.nick;
 		String username = message.opt;
-		String response = null;
 
 //		Setting udp datagrams
 		DatagramPacket sendPacket = null;
@@ -105,14 +105,12 @@ public class ChallengeTask implements Runnable {
 				udpSocket.receive(receivePacket);
 			} catch (SocketTimeoutException e) {
 				// If client does not answer handle timeout exception
-				response = "TIMEOUT";
-				msgWorker.sendResponse(response, clientSock, selector, false);
+				msgWorker.sendResponse("TIMEOUT", clientSock, selector, false);
 				selector.wakeup();
 				udpSocket.close();
 				return;
 			}
 		} catch (IOException ioe) {
-			ioe.printStackTrace();
 			msgWorker.sendResponse("ERROR", clientSock, selector, false);
 			selector.wakeup();
 			udpSocket.close();
@@ -121,8 +119,7 @@ public class ChallengeTask implements Runnable {
 //		Parse friend answer
 		String friendAnswer = new String(receivePacket.getData()).trim();
 		if (!friendAnswer.equals("Y")) {
-			response = "N";
-			msgWorker.sendResponse(response, clientSock, selector, false);
+			msgWorker.sendResponse("N", clientSock, selector, false);
 			selector.wakeup();
 			return;
 		}
@@ -162,8 +159,8 @@ public class ChallengeTask implements Runnable {
 		}
 //		The opponent accepted the challenge and they are both ready to start
 		if (!sendToBoth("START")) {
-			exitProcedure(clientSock);
-			exitProcedure(friendSock);
+			selector.wakeup();
+			closeChannels();
 			return;
 		}
 
@@ -189,13 +186,11 @@ public class ChallengeTask implements Runnable {
 						continue;
 					} else if (key.isWritable()) {
 						if (!sendWord(key, words)) {
-							exitProcedure((SocketChannel) key.channel());
 							return;
 						}
 					} else if (key.isReadable()) {
 						if (!readTranslation(key, words)) {
-							exitProcedure((SocketChannel) key.channel());
-							return;
+							exit = true;
 						}
 					}
 				}
@@ -208,9 +203,13 @@ public class ChallengeTask implements Runnable {
 					running = false;
 				}
 			}
+			if (exit == true) {
+				sendError(clientSock);
+				sendError(friendSock);
+				closeChannels();
+				return;
+			}
 			if (!sendScore(username, friendname)) {
-				exitProcedure(clientSock);
-				exitProcedure(friendSock);
 				return;
 			}
 
@@ -234,14 +233,37 @@ public class ChallengeTask implements Runnable {
 	private boolean sendToBoth(String response) {
 
 		boolean client = msgWorker.sendResponse(response, clientSock);
+		if(!client) {
+			disconnectClient(clientSock);
+		}
 		boolean friend = msgWorker.sendResponse(response, friendSock);
-
+		if (!friend) {
+			disconnectClient(friendSock);
+		}
 		return client && friend;
 	}
 
+	private void sendError(SocketChannel sock) {
+		if (!msgWorker.sendResponse("ERROR", sock)) {
+			disconnectClient(sock);
+			return;
+		}
+		try {
+			sock.register(selector, SelectionKey.OP_READ);
+			selector.wakeup();
+		} catch (ClosedChannelException e) {
+			return;
+		}
+	}
 	private boolean sendWord(SelectionKey key, LinkedList<String>[] words) {
 		SocketChannel sock = (SocketChannel) key.channel();
 
+		if (exit == true) {
+			sendError(sock);
+			closeChannels();
+			return false;
+		}
+		
 		int index = status.get(sock).getWordIndex();
 		String word = words[index].get(0);
 
@@ -260,6 +282,7 @@ public class ChallengeTask implements Runnable {
 			return false;
 		}
 		if (nread == -1) {
+			disconnectClient(sock);
 			return false;
 		}
 		String translation = new String(buffer.array(), StandardCharsets.UTF_8).toLowerCase().trim();
@@ -281,7 +304,6 @@ public class ChallengeTask implements Runnable {
 				sock.register(challengeSel, SelectionKey.OP_WRITE);
 			} else {
 //				There are no more words
-				msgWorker.sendResponse("END", sock);
 				sock.register(challengeSel, 0);
 			}
 		} catch (ClosedChannelException e) {
@@ -302,7 +324,6 @@ public class ChallengeTask implements Runnable {
 				return true;
 			}
 		}
-
 		return false;
 	}
 
@@ -370,25 +391,5 @@ public class ChallengeTask implements Runnable {
 		}
 		onlineUsr.remove(sock);
 		System.out.println("Connection Error: client disconnected");
-	}
-
-//	TODO: Exit due to communication error. Bugged?
-	private void exitProcedure(SocketChannel sock) {
-		if (sock.equals(clientSock)) {
-			if (!msgWorker.sendResponse("ERROR", friendSock, selector, false)) {
-				disconnectClient(friendSock);
-			}
-			disconnectClient(clientSock);
-			selector.wakeup();
-			closeChannels();
-		}
-		if (sock.equals(friendSock)) {
-			if (!msgWorker.sendResponse("ERROR", clientSock, selector, false)) {
-				disconnectClient(clientSock);
-			}
-			disconnectClient(friendSock);
-			selector.wakeup();
-			closeChannels();
-		}
 	}
 }

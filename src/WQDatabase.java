@@ -1,3 +1,4 @@
+
 /**
  * @author Marta Lo Cascio
  * @matricola 532686
@@ -24,6 +25,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+// Class that represent the Word Quizzle database.
+// It take cares of storing and serializing all Server's persistent informations:
+// usernames, passwords, users friend lists and users scores.
+// All the serialization methods are provided by the Gson library to manipulate the database
 public class WQDatabase {
 
 	private static final String DB_PATH = "WQ-Database.json";
@@ -38,6 +43,7 @@ public class WQDatabase {
 		}
 	}
 
+	// Add a new user to the database
 	public boolean addUser(String username, String password) {
 		if (username == null || password == null)
 			throw new NullPointerException();
@@ -50,6 +56,7 @@ public class WQDatabase {
 		return true;
 	}
 
+	// Change a user's score
 	public void updateScore(String username, int score) {
 		if (username == null)
 			throw new NullPointerException();
@@ -59,6 +66,7 @@ public class WQDatabase {
 		updateDB();
 	}
 
+	// Retrieves the score in the local version of the database
 	public int getScore(String username) {
 		if (username == null)
 			throw new NullPointerException();
@@ -67,6 +75,8 @@ public class WQDatabase {
 		return usr.getScore();
 	}
 
+	// Update the friendships graph.
+	// Add a friend to both clients' friendList
 	public boolean updateFriendList(String username, String friendname) {
 		if (username == null || friendname == null)
 			throw new NullPointerException();
@@ -84,6 +94,7 @@ public class WQDatabase {
 		return false;
 	}
 
+	// Retrieves the friendList in the local version of the database
 	public LinkedHashSet<String> getFriendList(String username) {
 		if (username == null)
 			throw new NullPointerException();
@@ -99,6 +110,7 @@ public class WQDatabase {
 		return database.containsKey(username);
 	}
 
+	// Check if a user is in the database and if there is a password correspondence
 	public boolean matchPassword(String username, String password) {
 		if (username == null || password == null)
 			throw new NullPointerException();
@@ -110,6 +122,7 @@ public class WQDatabase {
 		return false;
 	}
 
+	// Calculate ad returns the descending ordered ranking of user friends
 	public SortedSet<Entry<String, Integer>> getRanking(String username) {
 		if (username == null)
 			throw new NullPointerException();
@@ -127,7 +140,7 @@ public class WQDatabase {
 		return entriesSortedByValues(usrRanking);
 	}
 
-//	Support function to order rankings in descending way
+	// Support function to order rankings in descending way
 	private static <K, V extends Comparable<? super V>> SortedSet<Map.Entry<K, V>> entriesSortedByValues(
 			Map<K, V> map) {
 		if (map == null)
@@ -144,7 +157,7 @@ public class WQDatabase {
 		return sortedEntries;
 	}
 
-//	Read from JSON file and restore Quizzle database 
+	// Read from JSON file and restore Word Quizzle database
 	private void restoreDB() {
 		try {
 			Gson gson = new Gson();
@@ -161,7 +174,8 @@ public class WQDatabase {
 		}
 	}
 
-//	Need to be synchronized since more than one thread can call this function
+	// Change the .json file with updated informations.
+	// Need to be synchronized since more than one thread can call this function
 	private synchronized void updateDB() {
 		try {
 			Writer writer = new FileWriter(DB_PATH);

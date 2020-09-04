@@ -4,6 +4,9 @@
  * @project RCL - Word Quizzle
  */
 
+// Class that maintains the status of a challenger during a translation game.
+// Contains the number of word translated correctly, wrongly, the score and the
+// index to track the word to translate
 public class ChallengeStatus {
 
 	private int wordIndex;

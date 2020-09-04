@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 
 import com.google.gson.Gson;
 
+// Class responsible to send and receive all TCP messages from client to server
+// and from server to client.
 public class MessageWorker {
 
 	private Gson gson;
@@ -23,6 +25,8 @@ public class MessageWorker {
 		gson = new Gson();
 	}
 
+	// Parse an input line form client and make it into a Message.
+	// Message is a support structure
 	public Message writeMessage(String input) {
 		if (input == null)
 			throw new NullPointerException();
@@ -40,6 +44,7 @@ public class MessageWorker {
 		return msg;
 	}
 
+	// Send a JSON parsed Message to a selected socket
 	public boolean sendMessage(Message msg, SocketChannel sock) {
 		if (msg == null || sock == null)
 			throw new NullPointerException();
@@ -59,6 +64,7 @@ public class MessageWorker {
 		return true;
 	}
 
+	// Waits to read a TCP message from a selected socket
 	public String receiveLine(SocketChannel sock) {
 		if (sock == null)
 			throw new NullPointerException();
@@ -78,6 +84,7 @@ public class MessageWorker {
 		return response;
 	}
 
+	// Send and receive a Message to and from a socket
 	public String sendAndReceive(Message msg, SocketChannel sock) {
 		if (msg == null || sock == null)
 			throw new NullPointerException();
@@ -99,6 +106,7 @@ public class MessageWorker {
 		return response;
 	}
 
+	// Read informations from a buffer and put them in a Message type structure
 	public Message readMessage(ByteBuffer buffer) {
 		if (buffer == null)
 			throw new NullPointerException();
@@ -114,6 +122,11 @@ public class MessageWorker {
 		return msg;
 	}
 
+	// Method used from server, thread-safe.
+	// Sends a response string to a client channel.
+	// If isLogout flag is set to true then closes the connection.
+	// If false, then registers the channel with the main selector to a read
+	// operation, client hasn't finish yet!
 	public synchronized boolean sendResponse(String response, SocketChannel client, Selector selector,
 			boolean isLogout) {
 		if (response == null || client == null || selector == null)
@@ -126,11 +139,11 @@ public class MessageWorker {
 			try {
 				client.write(outBuffer);
 			} catch (IOException e) {
-				e.printStackTrace();
 				return false;
 			}
 		}
-
+		
+		// Client has requested to logout, no more operation to do for them.
 		if (isLogout) {
 			try {
 				System.out.println("Client disconnected " + client);
@@ -140,7 +153,7 @@ public class MessageWorker {
 				return false;
 			}
 		} else {
-//			set the channel ready for reading 
+			// Set the channel ready for reading 
 			try {
 				client.register(selector, SelectionKey.OP_READ);
 			} catch (ClosedChannelException e) {
@@ -151,6 +164,8 @@ public class MessageWorker {
 		return true;
 	}
 
+	// Method used from server, thread-safe.
+	// Sends a response string to a client channel, with no settings for selector.
 	public synchronized boolean sendResponse(String response, SocketChannel client) {
 		if (response == null || client == null)
 			throw new NullPointerException();
@@ -162,7 +177,6 @@ public class MessageWorker {
 			try {
 				client.write(outBuffer);
 			} catch (IOException e) {
-				e.printStackTrace();
 				return false;
 			}
 		}
@@ -170,6 +184,8 @@ public class MessageWorker {
 	}
 }
 
+// Support structure to represent a client request.
+// Contains all fields that a client can send to the server
 class Message {
 	public String operation;
 	public String nick;

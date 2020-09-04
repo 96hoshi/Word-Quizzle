@@ -19,6 +19,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
+// Class responsible of HTTP connection to the translation service.
+// Select the Italian words and retrieves their translations.
 public class TranslationHandler {
 
 	private static final String WORDS_PATH = "Italian_dictionary.txt";
@@ -43,6 +45,8 @@ public class TranslationHandler {
 		}
 	}
 
+	// Selects the K random words from a file with N words,
+	// where N >> K
 	private ArrayList<String> selectWords() {
 		ArrayList<String> selectedWords = new ArrayList<String>();
 
@@ -53,8 +57,13 @@ public class TranslationHandler {
 		return selectedWords;
 	}
 
+	// Retrieves an array with K random chosen words and builds an Array of Lists to return.
+	// Each List contains the original Italian word at first position and all
+	// the possible translations retrieved from translation site next
 	public LinkedList<String>[] getWords() throws IOException {
 		ArrayList<String> italianWords = selectWords();
+		// Safe Suppress Warning
+		@SuppressWarnings("unchecked")
 		LinkedList<String>[] translations = new LinkedList[NUM_WORDS];
 
 		for (int i = 0; i < italianWords.size(); i++) {

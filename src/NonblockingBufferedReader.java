@@ -1,3 +1,4 @@
+
 /**
  * @author Marta Lo Cascio
  * @matricola 532686
@@ -10,6 +11,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+// Class to create a BufferedReader which does not block indefinitely when reading
 public class NonblockingBufferedReader {
 	private final BlockingQueue<String> lines = new LinkedBlockingQueue<String>();
 	private volatile boolean closed = false;
@@ -39,7 +41,7 @@ public class NonblockingBufferedReader {
 	}
 
 //	Returns the next line, blocking for 500 milliseconds for input then returns null.
-//	If the background reader thread is interrupted then returns null.
+//	If the background reader thread is interrupted then returns null
 	public String readLine() throws IOException {
 		try {
 			return closed && lines.isEmpty() ? null : lines.poll(500L, TimeUnit.MILLISECONDS);

@@ -1,3 +1,4 @@
+
 /**
  * @author Marta Lo Cascio
  * @matricola 532686
@@ -6,6 +7,8 @@
 
 import java.util.LinkedHashSet;
 
+// Class that represent a Word Quizzle user.
+// It maintains all informations needed to identify a user and to save their data.
 public class User {
 
 	private final String username;

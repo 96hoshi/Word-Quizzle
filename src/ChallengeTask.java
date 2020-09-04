@@ -1,3 +1,4 @@
+
 /**
  * @author Marta Lo Cascio
  * @matricola 532686
@@ -64,7 +65,7 @@ public class ChallengeTask implements Runnable {
 		udpSocket = null;
 		translHandler = new TranslationHandler();
 		status = new HashMap<SocketChannel, ChallengeStatus>();
-		
+
 		timeout = new Thread() {
 			@Override
 			public void run() {
@@ -73,7 +74,7 @@ public class ChallengeTask implements Runnable {
 				} catch (InterruptedException e) {
 					return;
 				}
-				if(challengeSel != null)
+				if (challengeSel != null)
 					challengeSel.wakeup();
 			}
 		};
@@ -84,11 +85,11 @@ public class ChallengeTask implements Runnable {
 		String friendname = message.nick;
 		String username = message.opt;
 
-//		Setting udp datagrams
+		// Setting UDP datagrams
 		DatagramPacket sendPacket = null;
 		DatagramPacket receivePacket = null;
 
-//		Sending udp request to friend
+		// Sending UDP request to friend
 		try {
 			udpSocket = new DatagramSocket();
 			udpSocket.setSoTimeout(REQUEST_TIME);
@@ -98,7 +99,7 @@ public class ChallengeTask implements Runnable {
 			sendPacket = new DatagramPacket(challengeReq.getBytes(), challengeReq.length(), address);
 			udpSocket.send(sendPacket);
 
-//			Waiting for client answer
+			// Waiting for client answer
 			byte[] receiveData = new byte[64];
 			receivePacket = new DatagramPacket(receiveData, receiveData.length);
 			try {
@@ -116,7 +117,7 @@ public class ChallengeTask implements Runnable {
 			udpSocket.close();
 			return;
 		}
-//		Parse friend answer
+		// Parse friend answer
 		String friendAnswer = new String(receivePacket.getData()).trim();
 		if (!friendAnswer.equals("Y")) {
 			msgWorker.sendResponse("N", clientSock, selector, false);
@@ -125,7 +126,7 @@ public class ChallengeTask implements Runnable {
 		}
 		msgWorker.sendResponse(friendAnswer, clientSock);
 
-//		From now on the challenge can begin
+		// From now on the challenge can begin
 		status.put(clientSock, new ChallengeStatus());
 		status.put(friendSock, new ChallengeStatus());
 
@@ -134,14 +135,14 @@ public class ChallengeTask implements Runnable {
 		try {
 			friendSock.register(selector, 0);
 
-//			Setting challenge selector
+			// Setting challenge selector
 			challengeSel = Selector.open();
 
 			clientSock.register(challengeSel, SelectionKey.OP_WRITE);
 			friendSock.register(challengeSel, SelectionKey.OP_WRITE);
 			words = translHandler.getWords();
 
-//			See the chosen words
+			// See the chosen words
 			for (int i = 0; i < words.length; i++)
 				System.out.println(words[i]);
 
@@ -150,27 +151,30 @@ public class ChallengeTask implements Runnable {
 			closeChannels();
 			return;
 		} catch (IOException ioe) {
-//			Translation Error
+			// Translation Error
 			msgWorker.sendResponse("ERROR", clientSock, selector, false);
 			msgWorker.sendResponse("ERROR", friendSock, selector, false);
 			selector.wakeup();
 			closeChannels();
 			return;
 		}
-//		The opponent accepted the challenge and they are both ready to start
+		// The opponent accepted the challenge and they are both ready to start
 		if (!sendToBoth("START")) {
+			sendError(clientSock);
+			sendError(friendSock);
 			selector.wakeup();
 			closeChannels();
 			return;
 		}
 
-//		Setting timer
+		// Setting timer
 		final long startTime = System.currentTimeMillis();
 		timeout.start();
 		try {
 			while (running) {
 				challengeSel.select();
 
+				// Timeout timer
 				if (System.currentTimeMillis() >= startTime + CHALLENGE_TIME) {
 					break;
 				}
@@ -203,6 +207,7 @@ public class ChallengeTask implements Runnable {
 					running = false;
 				}
 			}
+			// If an error occurred notice players
 			if (exit == true) {
 				sendError(clientSock);
 				sendError(friendSock);
@@ -213,6 +218,7 @@ public class ChallengeTask implements Runnable {
 				return;
 			}
 
+			// Close this channel selector and UDP socket
 			challengeSel.close();
 			udpSocket.close();
 		} catch (IOException ioe) {
@@ -221,6 +227,7 @@ public class ChallengeTask implements Runnable {
 		}
 
 		try {
+			// Register both clients to a read operation on main selector
 			clientSock.register(selector, SelectionKey.OP_READ);
 			friendSock.register(selector, SelectionKey.OP_READ);
 			selector.wakeup();
@@ -233,7 +240,7 @@ public class ChallengeTask implements Runnable {
 	private boolean sendToBoth(String response) {
 
 		boolean client = msgWorker.sendResponse(response, clientSock);
-		if(!client) {
+		if (!client) {
 			disconnectClient(clientSock);
 		}
 		boolean friend = msgWorker.sendResponse(response, friendSock);
@@ -255,6 +262,8 @@ public class ChallengeTask implements Runnable {
 			return;
 		}
 	}
+
+	// Send the next word of the challenge or error if something went wrong
 	private boolean sendWord(SelectionKey key, LinkedList<String>[] words) {
 		SocketChannel sock = (SocketChannel) key.channel();
 
@@ -263,11 +272,15 @@ public class ChallengeTask implements Runnable {
 			closeChannels();
 			return false;
 		}
-		
+
 		int index = status.get(sock).getWordIndex();
 		String word = words[index].get(0);
 
-		return msgWorker.sendResponse(word, sock, challengeSel, false);
+		boolean res = msgWorker.sendResponse(word, sock, challengeSel, false);
+		if (!res) {
+			disconnectClient(friendSock);
+		}
+		return res;
 	}
 
 	private boolean readTranslation(SelectionKey key, LinkedList<String>[] words) {
@@ -287,6 +300,7 @@ public class ChallengeTask implements Runnable {
 		}
 		String translation = new String(buffer.array(), StandardCharsets.UTF_8).toLowerCase().trim();
 		ChallengeStatus challenger = (ChallengeStatus) status.get(sock);
+		// Count score and update challenger status
 		int index = challenger.getWordIndex();
 
 		if (correctTranslation(translation, words, index)) {
@@ -299,11 +313,11 @@ public class ChallengeTask implements Runnable {
 		challenger.incrementWordIndex();
 
 		try {
-//			Set the client ready for the next word
 			if (challenger.getWordIndex() < NUM_WORDS) {
+				// Set the client ready for the next word
 				sock.register(challengeSel, SelectionKey.OP_WRITE);
 			} else {
-//				There are no more words
+				// There are no more words to translate
 				sock.register(challengeSel, 0);
 			}
 		} catch (ClosedChannelException e) {
@@ -313,7 +327,7 @@ public class ChallengeTask implements Runnable {
 		return true;
 	}
 
-//	Check the translation correction
+	// Check the translation correction
 	private boolean correctTranslation(String translated, LinkedList<String>[] words, int index) {
 		if (translated == null) {
 			return false;
@@ -327,7 +341,7 @@ public class ChallengeTask implements Runnable {
 		return false;
 	}
 
-//	Calculate challenger score and send result string
+	// Calculate challenger score and send result string
 	private boolean sendScore(String username, String friendname) {
 		int clientScore = status.get(clientSock).getScore();
 		int friendScore = status.get(friendSock).getScore();
@@ -351,6 +365,7 @@ public class ChallengeTask implements Runnable {
 		return client && friend;
 	}
 
+	// Prepare Result message to send to clients
 	private String makeScoreResponse(String name, SocketChannel sock, int score, int enemyScore, String winner) {
 		int corrects = status.get(sock).getCorrects();
 		int errors = status.get(sock).getErrors();
@@ -364,7 +379,7 @@ public class ChallengeTask implements Runnable {
 					+ " points!\n";
 			status.get(sock).addScore(3);
 		} else {
-			endline = "You lose.\n";
+			endline = "You lose. It will be better next time!\n";
 		}
 
 		String res = "You have translated " + corrects + " words correctly, " + errors + " wrongly and not answered to "
@@ -376,11 +391,14 @@ public class ChallengeTask implements Runnable {
 
 	private void closeChannels() {
 		udpSocket.close();
-		try {
-			challengeSel.close();
-		} catch (IOException e) {
-			e.printStackTrace();
+		if (challengeSel != null) {
+			try {
+				challengeSel.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
+
 	}
 
 	private void disconnectClient(SocketChannel sock) {

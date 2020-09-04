@@ -17,6 +17,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+// Main module for server activity.
+// Parses client message and handle their request.
+// Sends to them a proper response and set the correct next operation to selector
 public class TaskHandler {
 
 	private final Selector selector;
@@ -35,8 +38,10 @@ public class TaskHandler {
 		this.database = db;
 		this.onlineUsr = ou;
 		this.usrAddress = ua;
+		
 		msgWorker = new MessageWorker();
 		
+		// Setting up a threadpool for challenges
 		int nThreads = 4;
 		long keepAliveTime = 1;
 		LinkedBlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<Runnable>();
@@ -44,12 +49,13 @@ public class TaskHandler {
 				workQueue);
 	}
 
+	// Read the operation from the message received from client and call the correct method
+	// to handle it. After sending a response, the handler set the client socket to read mode if needed
 	public void parseClient(Message message, SocketChannel client, SelectionKey key) {
 		if (client == null || key == null)
 			throw new NullPointerException();
 
 		if (message == null) {
-			System.out.println("Null message received");
 			msgWorker.sendResponse("Invalid operation", client, selector, false);
 			return;
 		}
@@ -81,7 +87,7 @@ public class TaskHandler {
 				break;
 			}
 	}
-
+	// Manages login request from client
 	private void loginTask(Message message, SocketChannel client) {
 		String username = message.nick;
 		String password = message.opt;
@@ -106,6 +112,7 @@ public class TaskHandler {
 		msgWorker.sendResponse(response, client, selector, false);
 	}
 
+	// Manages add_friend request from client
 	private void addFriendTask(Message message, SocketChannel client) {
 		String friendname = message.nick;
 		String username = message.opt;
@@ -130,6 +137,7 @@ public class TaskHandler {
 		msgWorker.sendResponse(response, client, selector, false);
 	}
 
+	// Manages logout request from client
 	private void logoutTask(Message message, SocketChannel client) {
 		String username = message.opt;
 		String response = null;
@@ -143,6 +151,7 @@ public class TaskHandler {
 		msgWorker.sendResponse(response, client, selector, true);
 	}
 
+	// Manages friend_list request from client
 	private void friendListTask(Message message, SocketChannel client) {
 		String username = message.opt;
 		String response = null;
@@ -153,6 +162,7 @@ public class TaskHandler {
 		msgWorker.sendResponse(response, client, selector, false);
 	}
 
+	// Manages score request from client
 	private void scoreTask(Message message, SocketChannel client) {
 		String username = message.opt;
 
@@ -161,6 +171,7 @@ public class TaskHandler {
 		msgWorker.sendResponse(response, client, selector, false);
 	}
 
+	// Manages ranking request from client
 	private void rankingTask(Message message, SocketChannel client) {
 		String username = message.opt;
 
@@ -169,6 +180,8 @@ public class TaskHandler {
 		msgWorker.sendResponse(response, client, selector, false);
 	}
 	
+	// Manages challenge request from client, checking parameters and let a thread from threadpool
+	// to handle it
 	private void challengeTask(Message message, SocketChannel client, SelectionKey key) {
 		String friendname = message.nick;
 		String username = message.opt;
@@ -195,19 +208,23 @@ public class TaskHandler {
 			return;
 		}
 
+		// Removes all operation from main selector
 		key.interestOps(0);
 		SocketChannel friendSock = null;
+		// Take the correct channel knowing the name of the friend challenged
 		for (SocketChannel sock : onlineUsr.keySet()) {
 			if (onlineUsr.get(sock).equals(friendname)) {
 				friendSock = sock;
 				break;
 			}
 		}
+
 		ChallengeTask challenge = new ChallengeTask(message, msgWorker, client, friendSock, selector, database,
 				usrAddress, onlineUsr);
 		tPool.execute(challenge);
 	}
 
+	// Remove a client from the structure of online users if an error occurred
 	public void forcedLogout(SocketChannel client) {
 		onlineUsr.remove(client);
 	}
